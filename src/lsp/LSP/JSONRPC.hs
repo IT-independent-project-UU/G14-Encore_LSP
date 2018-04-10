@@ -3,10 +3,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 {- |
-Module : JSONRPC
+Module : LSP.JSONRPC
 -}
 
-module JSONRPC (
+module LSP.JSONRPC (
     ClientMessage(..),
     ServerMessage(..),
     Error(..),
