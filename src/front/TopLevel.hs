@@ -70,6 +70,7 @@ data Option =
             | Output FilePath
             | Source FilePath
             | Imports [FilePath]
+            | Server String
             | TypecheckOnly
             | PrettyPrint
             | Verbose
@@ -98,6 +99,8 @@ data OptionMapping = OptionMapping {
 optionMappings =
   map makeMapping
       [
+       (Arg Server, "-s", "--server", "[server-mode]",
+       "Start the compiler in server mode. Used when the compiler runs a language server"),
        (Arg (Imports . split ":"), "-I", "--import", "[dirs]",
         "colon separated list of directories in which to look for modules."),
        (Arg Output, "-o", "--out-file", "[file]",
@@ -301,31 +304,7 @@ compileProgram prog sourcePath options =
 
 isServerOption :: Option -> Bool
 isServerOption (Server _) = True
-isServerOption _          = False
-
-getPortOption :: [Option] -> IO Integer
-getPortOption [] = exit "Port number must be specified using --port."
-getPortOption ((Port port):bs)
-    = case readMaybe port of
-          Just port -> return port
-          Nothing   -> exit "Port specified using --port must be a number."
-getPortOption (a:bs) = getPortOption bs
-
-getHostOption :: [Option] -> IO String
-getHostOption [] = exit "Host must be specified using --host."
-getHostOption ((Host host):_) = return host
-getHostOption (a:bs) = getHostOption bs
-
-serverParams :: String -> [Option] -> IO ConnectionParams
-serverParams "stdio"      options = return STDIO
-serverParams "tcp-server" options = do
-    port <- getPortOption options
-    return $ TCPServer port
-serverParams "tcp-client" options = do
-    port <- getPortOption options
-    host <- getHostOption options
-    return $ TCPClient host port
-serverParams _ _ = fail "Language server mode must be one of \"stdio\", \"tcp-server\" or \"tcp-client\"."
+isServerOption _ = False
 
 main =
     do
@@ -336,12 +315,17 @@ main =
        when (Help `elem` options)
            (exit helpMessage)
 
-       -- Run language server if mode is specified
+       -- Check if we should run in server mode
+       let serverFlags =
+            case find isServerOption options of
+              Just (Server mode) -> mode
+              Nothing            -> ""
+
+       -- Run server
        case find isServerOption options of
-           Just (Server mode) -> do params <- serverParams mode options
-                                    startServer params
-                                    exitSuccess
-           Nothing            -> return ()
+              Just (Server _) -> do startServer serverFlags
+                                    exit "Server stopped"
+              Nothing -> return ()
 
        -- Check that files were specified
        when (null programs)
