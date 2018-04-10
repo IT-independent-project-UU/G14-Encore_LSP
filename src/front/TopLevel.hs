@@ -50,6 +50,8 @@ import CodeGen.Header
 import CCode.PrettyCCode
 import Identifiers
 
+import LSP.Service
+
 
 -- the following line of code resolves the standard path at compile time using Template Haskell
 standardLibLocation = $(stringE . init =<< runIO (System.Environment.getEnv "ENCORE_MODULES" ))
@@ -67,6 +69,7 @@ data Option =
             | Output FilePath
             | Source FilePath
             | Imports [FilePath]
+            | Server String
             | TypecheckOnly
             | PrettyPrint
             | Verbose
@@ -92,6 +95,8 @@ data OptionMapping = OptionMapping {
 optionMappings =
   map makeMapping
       [
+       (Arg Server, "-s", "--server", "[server-mode]", 
+       "Start the compiler in server mode. Used when the compiler runs a language server"),
        (Arg (Imports . split ":"), "-I", "--import", "[dirs]",
        "colon separated list of directories in which to look for modules."),
        (Arg Output, "-o", "--out-file", "[file]",
@@ -287,12 +292,32 @@ compileProgram prog sourcePath options =
       getDefine NoGC = "NO_GC"
       getDefine _ = ""
 
+isServerOption :: Option -> Bool
+isServerOption (Server _) = True
+isServerOption _ = False
+
 main =
-    do args <- getArgs
+    do 
+       -- Parse arguments
+       args <- getArgs
        (programs, importDirs, options) <- parseArguments args
        checkForUndefined options
        when (Help `elem` options)
            (exit helpMessage)
+
+       -- Check if we should run in server mode
+       let serverFlags = 
+            case find isServerOption options of
+              Just (Server mode) -> mode
+              Nothing            -> ""
+
+       -- Run server
+       case find isServerOption options of
+              Just (Server _) -> do startServer serverFlags
+                                    exit "Server stopped"
+              Nothing -> return ()
+
+       -- Check that files were specified
        when (null programs)
            (abort ("No program specified! Aborting.\n\n" <>
                     usage <> "\n" <>
