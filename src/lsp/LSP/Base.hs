@@ -1,9 +1,9 @@
 {- |
-MODULE      : Base
+MODULE      : LSP.Base
 DESCRIPTION : Implements the HTTP-like base layer of LSP
 -}
 
-module Base (
+module LSP.Base (
     encodeMessage,
     parsePackets, parsePacket,
     LSPPacket (..), LSPHeaderField (..)
