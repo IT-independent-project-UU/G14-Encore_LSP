@@ -120,9 +120,9 @@ blankNamedProgram name = Program{
 
 producerPrecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
 producerPrecheckProgram lookupTable program = do
-    case precheckProgram lookupTable (getDBProgram program) of
+    case precheckProgram lookupTable (convertToProgram program) of
         (Right newProgram, warnings)    -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
-        (Left error, warnings)          -> return $ makeDBProgram  blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
+        (Left error, warnings)          -> return $ makeDBProgram blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 
 producerPrecheck :: DBProgramTable -> IO (DBProgramTable)
 producerPrecheck programTable = do
@@ -135,7 +135,7 @@ producerPrecheck programTable = do
 
 producerTypecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
 producerTypecheckProgram lookupTable program = do
-    case typecheckProgram lookupTable (getDBProgram program) of
+    case typecheckProgram lookupTable (convertToProgram program) of
         (Right (env, newProgram), warnings)     -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
         (Left error, warnings)   -> return $ makeDBProgram blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 

@@ -73,13 +73,26 @@ startServer STDIO = do
         "end")
     -}
 
-    dumpDBProgramTable progTable
+    let db = updateProgramTable makeDatabase progTable
 
-    case hasProgramTableError progTable of
-        True -> print "Error haha!!"
-        False -> return ()
+    print $ "Size: " ++ show (Map.size $ getDatabasePrograms db)
+
+    case lookupClass db ":srv:" "Main" of
+        Just cd -> do
+            print "Found class"
+        Nothing -> do
+            print "Did not found class"
+
+    --dumpDBProgramTable progTable
+
+    --case hasProgramTableError progTable of
+    --    True -> print "Error haha!!"
+    --    False -> return ()
 
     --print $ "Size: " ++ show (Map.size progTable)
+
+    --case (lookupClass progTable)
+
 
     return ()
 
