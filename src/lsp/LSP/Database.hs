@@ -1,3 +1,6 @@
+{-# LANGUAGE TemplateHaskell #-}
+
+
 module LSP.Database (
     DBProgramTable,
     DBProgram,
@@ -7,6 +10,10 @@ module LSP.Database (
     convertFromProgramTable,
     convertToProgramTable,
     hasProgramTableError,
+    fromTCErrors,
+    fromTCWarnings,
+    fromParsecError,
+    fromErrorMessage,
 
     dumpDBProgramTable
 ) where
@@ -15,13 +22,18 @@ module LSP.Database (
 -- Section: Imports
 -- ###################################################################### --
 
+-- Library
+import Text.Megaparsec
+
 -- Standard
 import qualified Data.Map.Strict as Map
 import Data.List
+import qualified Data.List.NonEmpty as NE(head)
 
 -- Encore imports
 import ModuleExpander
 import AST.AST
+import AST.Meta(Position(SingletonPos, RangePos))
 import Typechecker.TypeError
 
 
@@ -29,13 +41,28 @@ import Typechecker.TypeError
 -- Section: Data
 -- ###################################################################### --
 
+{- Alias for a map from FilePath to a DBProgram -}
 type DBProgramTable = Map.Map FilePath DBProgram
 
+{- Position tuple  -}
+type DBPosition = ((Int, Int), (Int, Int))
+
+{- Error datastructure. Can represent a variety of different error types -}
+data DBError = DBError{
+    message     :: String,      -- Error message string
+    position    :: DBPosition,  -- Start and end position
+    warning     :: Bool         -- Whether the error is actually a warning
+} deriving (Show)
+
+{- Datastructure that represents a single compilation unit in Encore. This 
+    mostly mimics the Program structure found in AST.hs, however it also 
+    contains some extra information useful to the LSP implementation.
+-}
 data DBProgram = DBProgram{
-    program     :: Program,
-    version     :: Int,
-    errors      :: [TCError],
-    warnings    :: [TCWarning]
+    program     :: Program,     -- Program (AST.hs)
+    version     :: Int,         -- Version of the file
+    errors      :: [DBError],   -- List of current errors in unit
+    warnings    :: [DBError]    -- List of warnings in unit
 }
 
 {- Server database that stores all compiled programs as a mapping 
@@ -52,7 +79,7 @@ data ServerDatabase = ServerDatabase{
 createDatabase :: ServerDatabase
 createDatabase = ServerDatabase{programs = Map.empty}
 
-makeDBProgram :: Program -> [TCError] -> [TCWarning] -> DBProgram
+makeDBProgram :: Program -> [DBError] -> [DBError] -> DBProgram
 makeDBProgram _program _errors _warnings =
      DBProgram{program = _program, version = 0, errors = _errors, warnings = _warnings}
 
@@ -70,6 +97,57 @@ convertToProgramTable :: DBProgramTable -> ProgramTable
 convertToProgramTable table = fmap (getDBProgram) table
 
 -- ###################################################################### --
+-- Section: Error handling
+-- ###################################################################### --
+
+extractTCErrorPosition :: TCError -> DBPosition
+extractTCErrorPosition error@(TCError errorType backtrace) =
+    case fst (head backtrace) of
+        (AST.Meta.SingletonPos startPos) -> 
+            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
+            (fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)))
+        (AST.Meta.RangePos startPos endPos) -> 
+            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
+            (fromIntegral(unPos $ sourceLine $ endPos), fromIntegral(unPos $ sourceColumn $ endPos)))
+
+extractTCWarningPosition :: TCWarning -> DBPosition
+extractTCWarningPosition warning = ((0,0), (0,0))
+
+fromTCError :: TCError -> DBError
+fromTCError error = 
+    DBError{message = show error, position = extractTCErrorPosition error, warning = False}
+
+fromTCErrors :: [TCError] -> [DBError]
+fromTCErrors errors = fmap (fromTCError) errors
+
+fromTCWarning :: TCWarning -> DBError
+fromTCWarning warning = 
+    DBError{message = show warning, position = extractTCWarningPosition warning, warning = True}
+
+fromTCWarnings :: [TCWarning] -> [DBError]
+fromTCWarnings warnings = fmap (fromTCWarning) warnings
+
+fromParsecError :: (ParseError Char Text.Megaparsec.Dec) -> DBError
+fromParsecError error =
+    DBError{
+        message = show error, 
+        position = ((fromIntegral(unPos $ sourceLine $ NE.head $ errorPos error), fromIntegral(unPos $ sourceColumn $ NE.head $ errorPos error)), 
+                    (fromIntegral(unPos $ sourceLine $ NE.head $ errorPos error), fromIntegral(unPos $ sourceColumn $ NE.head $ errorPos error))), 
+        warning = False
+    }
+
+{- Construct a DBError from a message, position and whether it is actually a 
+    warning
+
+    Param: Error message
+    Param: Position (row, column)
+    Param: Whether or not the error is actually a warning
+-}
+fromErrorMessage :: String -> DBPosition -> Bool -> DBError
+fromErrorMessage _message _position _warning = 
+    DBError{message = _message, position = _position, warning = _warning}
+
+-- ###################################################################### --
 -- Section: Insertion and lookup
 -- ###################################################################### --
 
@@ -84,13 +162,13 @@ insertProgramTable db pt = do
     return ()
 
 {- Lookup a ClassDecl in the server database by its name and the path to the file
-where it was defined.
+    where it was defined.
 
-Param: Database to lookup in.
-Param: Path to the file where the class was declared.
-Param: Name of the class to lookup.
+    Param: Database to lookup in.
+    Param: Path to the file where the class was declared.
+    Param: Name of the class to lookup.
 
-Return: Returns the looked up ClassDecl or Nothing if it was not found.
+    Return: Returns the looked up ClassDecl or Nothing if it was not found.
 -}
 lookupClass :: ServerDatabase -> FilePath -> String -> (Maybe ClassDecl)
 lookupClass database sourceName className =
