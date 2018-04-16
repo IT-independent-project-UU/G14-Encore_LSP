@@ -5,8 +5,9 @@ module LSP.Database (
     DBProgramTable,
     DBProgram,
     ServerDatabase,
+    makeDatabase,
     makeDBProgram,
-    getDBProgram,
+    convertToProgram,
     convertFromProgramTable,
     convertToProgramTable,
     hasProgramTableError,
@@ -14,6 +15,9 @@ module LSP.Database (
     fromTCWarnings,
     fromParsecError,
     fromErrorMessage,
+    updateProgramTable,
+    lookupClass,
+    getDatabasePrograms,
 
     dumpDBProgramTable
 ) where
@@ -27,14 +31,17 @@ import Text.Megaparsec
 
 -- Standard
 import qualified Data.Map.Strict as Map
-import Data.List
 import qualified Data.List.NonEmpty as NE(head)
+import Data.List
+import Control.Monad
 
 -- Encore imports
 import ModuleExpander
 import AST.AST
 import AST.Meta(Position(SingletonPos, RangePos))
 import Typechecker.TypeError
+import Typechecker.Environment
+
 
 
 -- ###################################################################### --
@@ -76,15 +83,15 @@ data ServerDatabase = ServerDatabase{
 -- Section: Construction
 -- ###################################################################### --
 
-createDatabase :: ServerDatabase
-createDatabase = ServerDatabase{programs = Map.empty}
+makeDatabase :: ServerDatabase
+makeDatabase = ServerDatabase{programs = Map.empty}
 
 makeDBProgram :: Program -> [DBError] -> [DBError] -> DBProgram
 makeDBProgram _program _errors _warnings =
      DBProgram{program = _program, version = 0, errors = _errors, warnings = _warnings}
 
-getDBProgram :: DBProgram -> Program
-getDBProgram _program = (program _program)
+convertToProgram :: DBProgram -> Program
+convertToProgram _program = (program _program)
 
 convertFromProgramTable :: ProgramTable -> DBProgramTable
 convertFromProgramTable table = 
@@ -94,7 +101,21 @@ convertFromProgramTable table =
         _convertFromProgramSingle program = (makeDBProgram program [] [])
 
 convertToProgramTable :: DBProgramTable -> ProgramTable
-convertToProgramTable table = fmap (getDBProgram) table
+convertToProgramTable table = fmap (convertToProgram) table
+
+makeLookupTable :: DBProgramTable -> (Map.Map FilePath LookupTable)
+makeLookupTable programTable = fmap (\x -> buildLookupTable (program x)) programTable
+
+
+-- ###################################################################### --
+-- Section: Accessors and mutators
+-- ###################################################################### --
+
+getProgramPath :: DBProgram -> String
+getProgramPath _program = (source (program _program))
+
+getDatabasePrograms :: ServerDatabase -> DBProgramTable
+getDatabasePrograms database = (programs database)
 
 -- ###################################################################### --
 -- Section: Error handling
@@ -147,19 +168,23 @@ fromErrorMessage :: String -> DBPosition -> Bool -> DBError
 fromErrorMessage _message _position _warning = 
     DBError{message = _message, position = _position, warning = _warning}
 
--- ###################################################################### --
--- Section: Insertion and lookup
--- ###################################################################### --
-
 hasProgramTableError :: DBProgramTable -> Bool
 hasProgramTableError programTable =
     True `elem` (fmap (_hasProgramError) programTable)
     where 
-        _hasProgramError program = length (errors program) /= 0 
+        _hasProgramError program = length (errors program) /= 0     
 
-insertProgramTable :: ServerDatabase -> ProgramTable -> IO ()
-insertProgramTable db pt = do
-    return ()
+-- ###################################################################### --
+-- Section: Insertion and lookup
+-- ###################################################################### --
+
+updateProgramTable :: ServerDatabase -> DBProgramTable -> ServerDatabase
+updateProgramTable database newTable = ServerDatabase {
+    programs = Map.unionWith (\x y -> y) (programs database) (newTable)
+}
+    
+    
+    
 
 {- Lookup a ClassDecl in the server database by its name and the path to the file
     where it was defined.
