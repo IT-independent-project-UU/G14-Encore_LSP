@@ -16,20 +16,17 @@ import Network
 import System.IO
 
 -- Encore imports
-import LSP.LSP
 import ModuleExpander
 import AST.AST
+
+-- LSP imports
+import LSP.LSP
+import LSP.Producer
+import LSP.Database
 
 -- ###################################################################### --
 -- Section: Data
 -- ###################################################################### --
-
-{- Server database that stores all compiled programs as a mapping 
-from source names to programs 
--}
-data ServerDatabase = ServerDatabase{
-    programs :: ProgramTable
-}
 
 {-
 -}
@@ -42,15 +39,36 @@ data ConnectionParams
 {- Start the Encore compiler in LSP mode. This will handle events from 
 a client and handle them accordingly.
 
+-- ###################################################################### --
+-- Section: Functions
+-- ###################################################################### --
+
 Param: ConnectionParams specifying mode and possibly host and port
 -}
 startServer :: ConnectionParams -> IO ()
 startServer STDIO = do
-    contents <- getContents
+    progTable <- produceProgramFromSource ":srv:"
+        ("active class Main\n" ++
+        "   def main(): unit\n" ++
+        "       println(\"Hello embedded source\")\n" ++
+        "   end\n" ++
+        "end")
+
+    dumpDBProgramTable progTable
+
+    case hasProgramTableError progTable of
+        True -> print "Error haha!!"
+        False -> return ()
+
+    print $ "Size: " ++ show (Map.size progTable)
+
+    return ()
+
+    {-contents <- getContents
     let responseStream = handleClient contents
 
     hSetBuffering stdout NoBuffering
-    hPutStr stdout responseStream
+    hPutStr stdout responseStream-}
 
 startServer (TCPServer port) = do
     sock <- listenOn $ PortNumber $ fromInteger port
@@ -74,18 +92,3 @@ startServer (TCPClient host port) = do
 
     hSetBuffering sock NoBuffering
     hPutStr sock responseStream
-
-{- Lookup a ClassDecl in the server database by its name and the path to the file
-where it was defined.
-
-Param: Database to lookup in.
-Param: Path to the file where the class was declared.
-Param: Name of the class to lookup.
-
-Return: Returns the looked up ClassDecl or Nothing if it was not found.
--}
-lookupClass :: ServerDatabase -> FilePath -> String -> (Maybe ClassDecl)
-lookupClass database sourceName className =
-    case (Map.lookup sourceName (programs database)) of
-        Just prog   ->  find (\cd -> (show $ cname cd) == className) (classes prog)
-        Nothing     ->  Nothing
