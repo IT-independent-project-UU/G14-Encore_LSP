@@ -69,8 +69,9 @@ produceProgramFromSource sourceName source = do
 
     case error of
         Just e -> do 
-            print "Failed to parse program"
-            let dbProgram = (makeDBProgram blankProgram [] [])
+            --print "Failed to parse program"
+            let dbError = fromParsecError e
+            let dbProgram = (makeDBProgram (blankNamedProgram sourceName) [dbError] [])
             let dbTable = (Map.insert sourceName dbProgram (Map.empty :: DBProgramTable))
             return (dbTable)
         Nothing -> do
@@ -100,6 +101,18 @@ blankProgram = Program{
     classes = []
 }
 
+{- Returns a blank program with a name -}
+blankNamedProgram :: String -> Program
+blankNamedProgram name = Program{
+    source = name,
+    moduledecl = NoModule,
+    etl = [],
+    imports = [],
+    typedefs = [],
+    functions = [],
+    traits = [],
+    classes = []
+}
 
 -- ###################################################################### --
 -- Section: Type checking
@@ -108,8 +121,8 @@ blankProgram = Program{
 producerPrecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
 producerPrecheckProgram lookupTable program = do
     case precheckProgram lookupTable (getDBProgram program) of
-        (Right newProgram, warnings)    -> return $ makeDBProgram newProgram [] warnings
-        (Left error, warnings)          -> return $ makeDBProgram  blankProgram [error] warnings 
+        (Right newProgram, warnings)    -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
+        (Left error, warnings)          -> return $ makeDBProgram  blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 
 producerPrecheck :: DBProgramTable -> IO (DBProgramTable)
 producerPrecheck programTable = do
@@ -123,8 +136,8 @@ producerPrecheck programTable = do
 producerTypecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
 producerTypecheckProgram lookupTable program = do
     case typecheckProgram lookupTable (getDBProgram program) of
-        (Right (env, newProgram), warnings) -> return $ makeDBProgram newProgram [] warnings
-        (Left error, warnings)              -> return $ makeDBProgram blankProgram [error] warnings
+        (Right (env, newProgram), warnings)     -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
+        (Left error, warnings)   -> return $ makeDBProgram blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 
 producerTypecheck :: DBProgramTable -> IO (DBProgramTable)
 producerTypecheck programTable = do
