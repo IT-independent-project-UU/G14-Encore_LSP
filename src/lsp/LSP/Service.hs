@@ -36,23 +36,42 @@ data ConnectionParams
     | TCPClient String Integer
     deriving (Show)
 
-{- Start the Encore compiler in LSP mode. This will handle events from 
-a client and handle them accordingly.
-
 -- ###################################################################### --
 -- Section: Functions
 -- ###################################################################### --
 
+getProgramFromStdioAux :: String -> IO (String)
+getProgramFromStdioAux input
+  | input == ['\n'] = return ['\n']
+  | otherwise = do
+      a <- getProgramFromStdio
+      return $ input ++ ['\n'] ++ a
+
+getProgramFromStdio :: IO (String)
+getProgramFromStdio = do
+  ok <- hIsEOF stdin
+  if ok then do
+    return []
+  else do
+    input <- getLine
+    getProgramFromStdioAux input
+
+{- Start the Encore compiler in LSP mode. This will handle events from
+a client and handle them accordingly.
 Param: ConnectionParams specifying mode and possibly host and port
 -}
 startServer :: ConnectionParams -> IO ()
 startServer STDIO = do
-    progTable <- produceProgramFromSource ":srv:"
+    -- run like this: cat playground/main.enc | encorec -s stdio
+    program <- getProgramFromStdio
+    progTable <- produceProgramFromSource ":srv:" program
+    {-
         ("active class Main\n" ++
         "   def main(): unit\n" ++
         "       println(\"Hello embedded source\")\n" ++
         "   end\n" ++
         "end")
+    -}
 
     let db = updateProgramTable makeDatabase progTable
 
