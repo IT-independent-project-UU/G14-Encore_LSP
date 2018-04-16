@@ -60,7 +60,7 @@ startServer STDIO = do
         True -> print "Error haha!!"
         False -> return ()
 
-    print $ "Size: " ++ show (Map.size progTable)
+    --print $ "Size: " ++ show (Map.size progTable)
 
     return ()
 
