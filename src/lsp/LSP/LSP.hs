@@ -5,11 +5,7 @@ module LSP.LSP (
     handleClient
 ) where
 
--- ###################################################################### --
--- Section: Imports
--- ###################################################################### --
-
--- Standard
+import Control.Monad.State
 import Data.Aeson as Aeson
 import Data.Aeson.Types
 import Data.Text (pack)
@@ -21,16 +17,7 @@ import Debug.Trace as Debug
 import qualified LSP.Base as Base
 import LSP.JSONRPC as JSONRPC
 import LSP.Data.State as State
-import LSP.Data.TextDocument as TextDocument
-import LSP.Data.Hover (Hover(..))
-import qualified LSP.Data.Hover as Hover
-import LSP.Data.Diagnostic as Diagnostic
-import LSP.Data.Program as Program
-import LSP.Producer (produceAndUpdateState)
-
--- ###################################################################### --
--- Section: Functions
--- ###################################################################### --
+import LSP.Data.TextDocument
 
 decodeMessageStream :: String -> ([Either String JSONRPC.ClientMessage], Maybe String)
 decodeMessageStream input =
@@ -39,156 +26,84 @@ decodeMessageStream input =
         requests       = concat $ map (either ((:[]) .Left) (map Right)) requestBatches
     in  (requests, e)
 
-encodeMessageStream :: [JSONRPC.ServerMessage] -> String
-encodeMessageStream responses =
+encodeMessageString :: [JSONRPC.ServerMessage] -> String
+encodeMessageString responses =
     let responseMessages = map (Base.LSPPacket [] . JSONRPC.encodeMessage) responses
     in  concat $ map Base.encodeMessage responseMessages
 
-handleClient :: Handle -> Handle -> IO ()
-handleClient input output =
-    do inputStream <- hGetContents input
-       let (requests, e) = decodeMessageStream inputStream
-       sendResponses output State.initial $ map handleRequest requests
-       return ()
+mapWithState :: (a -> State s b) -> [a] -> State s [b]
+mapWithState f []     = return []
+mapWithState f (a:bs) =
+    state (\s -> let (resA,  nextS)  = runState (f a) s
+                     (resBs, finalS) = runState (mapWithState f bs) nextS
+                 in  (resA:resBs, finalS))
 
-sendResponses :: Handle -> LSPState -> [StateT LSPState IO [ServerMessage]] -> IO ()
-sendResponses _ _ [] = return ()
-sendResponses output state (a:bs) =
-    do (responses, nextState) <- runStateT a state
-       hPutStr output $ encodeMessageStream responses
-       sendResponses output nextState bs
-
-modifyM :: (Monad m, MonadTrans t, MonadState s (t m)) => (s -> m s) -> t m ()
-modifyM f = do s <- get
-               s <- lift $ f s
-               put s
-
-{- Uses the regular handleRequest but prints the request and response messages as well. -}
-debugHandleRequest :: Either String JSONRPC.ClientMessage ->
-                      StateT LSPState IO [ServerMessage]
-debugHandleRequest request =
-    do lift $ putStrLn $ "got request: " ++ show request
-       state <- get
-       (responses, newState) <- lift $ runStateT (handleRequest request) state
-       put newState
-       lift $ putStrLn $ "sending responses: " ++ show responses
-       return responses
+handleClient :: String -> String
+handleClient input =
+    let (requests, e) = decodeMessageStream input
+        responses = concat $ fst $ runState (mapWithState handleRequest requests) State.initial
+    in  encodeMessageString responses
 
 handleRequest :: Either String JSONRPC.ClientMessage ->
-                 StateT LSPState IO [ServerMessage]
+                 State LSPState [JSONRPC.ServerMessage]
 handleRequest (Left e)
     = return [
-              JSONRPC.ErrorResponse {
-                  seMsgID = Nothing,
-                  seError = JSONRPC.Error JSONRPC.parseError e Nothing
-              }
-          ]
-
+          JSONRPC.ErrorResponse {
+              seMsgID = Nothing,
+              seError = JSONRPC.Error JSONRPC.parseError e Nothing
+          }
+      ]
 handleRequest (Right (Request msgID "initialize" params))
-    = (lift $ putStrLn "init") >> return [
-              ServerNotification {
-                  snMethod = "window/showMessage",
-                  snParams = Just $ object [
-                          ("type", Number 3), -- info
-                          ("message", "LSP - Hello world!")
-                      ]
-              },
-              Response {
-                  srMsgID  = msgID,
-                  srResult = object [
-                      ("capabilities", object [
-                          ("textDocumentSync", Number 2) -- Incremental
-                      ])
-                  ]
-              }
-          ]
+    = return [
+        ServerNotification {
+            snMethod = "window/showMessage",
+            snParams = Just $ object [
+                    ("type", Number 3), -- info
+                    ("message", "LSP - Hello world!")
+                ]
+        },
+        Response {
+            srMsgID  = msgID,
+            srResult = object [
+                ("capabilities", object [
+                    ("textDocumentSync", Number 2), -- Incremental
+                    ("colorProvider", object [])
+                ])
+            ]
+        }
+    ]
 
 handleRequest (Right (ClientNotification "textDocument/didOpen" params))
-    = case fmap fromJSON params of
-          Just (Success document) ->
-              do modify $ State.addTextDocument document
-                 modifyM $ State.compileDocument (uri document)
-
-                 program <- fmap (getProgram $ uri document) get
-                 case program of
-                     Just p ->
-                         return [
-                                 ServerNotification {
-                                         snMethod = "textDocument/publishDiagnostics",
-                                         snParams = Just $ toJSON $ PublishDiagnosticsParams {
-                                                 pdpUri = uri document,
-                                                 pdpDiagnostics = map errorToDiagnostic $ errors p
-                                             }
-                                     }
-                             ]
-                     Nothing -> return []
-          Just (Aeson.Error err) -> return []
-          Nothing -> return []
-
-handleRequest (Right (ClientNotification "textDocument/didClose" params))
-    = case fmap fromJSON params of
-          Just (Success documentIdent) ->
-              do lift $ putStrLn $ "close " ++ (show documentIdent)
-                 modify $ State.closeTextDocument (tdclIdentifier documentIdent)
-                 return []
-          Just (Aeson.Error err) -> return []
-          Nothing -> return []
+    = case Just fromJSON <*> params of
+          Just (Success document) -> do state <- get
+                                        put $ State.addTextDocument document state
+                                        return []
+          Just (Aeson.Error err) ->
+              return [
+                      showMessage MessageError "Client notification textDocument/didOpen has bad params"
+                  ]
+          Nothing ->
+              return [
+                      showMessage MessageError "Client notification textDocument/didOpen is missing params"
+                  ]
 
 handleRequest (Right (ClientNotification "textDocument/didChange" params))
-    = case fmap fromJSON params of
-          Just (Success documentChange) ->
-              do modify $ State.changeTextDocument documentChange
-                 modifyM $ State.compileDocument (uri documentChange)
-
-                 program <- fmap (getProgram $ uri documentChange) get
-                 case program of
-                     Just p ->
-                         return [
-                                 ServerNotification {
-                                         snMethod = "textDocument/publishDiagnostics",
-                                         snParams = Just $ toJSON $ PublishDiagnosticsParams {
-                                                 pdpUri = uri documentChange,
-                                                 pdpDiagnostics = map errorToDiagnostic $ errors p
-                                             }
-                                     }
-                             ]
-                     Nothing -> return []
+    = case Just fromJSON <*> params of
+          Just (Success documentChange) -> do state <- get
+                                              let newState = State.changeTextDocument documentChange state
+                                              put $ newState
+                                              return [
+                                                      -- showMessage MessageLog ("State: " ++ show newState)
+                                                  ]
           Just (Aeson.Error err) ->
-              do lift $ putStrLn $ show err
-                 return []
-          Nothing -> return []
-
-handleRequest (Right (Request msgID "textDocument/hover" params))
-    = case fmap fromJSON params of
-          Just (Success posParams) ->
-              do state <- get
-                 case State.getProgram (Hover.uri posParams) state >>=
-                          getProgramInfoForPos ({- Debug.trace ("hover pos: " ++ show (Hover.position posParams)) -} (Hover.position posParams)) of
-                     Nothing ->
-                        return [
-                                Response {
-                                    srMsgID = {- Debug.trace "hover nothing: " -} msgID,
-                                    srResult = Null
-                                }
-                            ]
-                     Just info ->
-                         return [
-                                Response {
-                                    srMsgID = {- Debug.trace "hover just: " -} msgID,
-                                    srResult = toJSON $ Hover {
-                                        Hover.contents = pDesc info,
-                                        Hover.range = pRange info
-                                    }
-                                }
-                            ]
-          Just (Aeson.Error err) -> return []
-          Nothing -> return []
-
-{- ignored notifications -}
-handleRequest (Right (ClientNotification "initialized" _)) = return []
-handleRequest (Right (ClientNotification "$/cancelRequest" _)) = return []
-handleRequest (Right (ClientNotification "textDocument/didSave" _)) = return []
-handleRequest (Right (ClientNotification "workspace/didChangeConfiguration" _)) = return []
+              return [
+                      showMessage MessageError "Client notification textDocument/didChange has bad params",
+                      showMessage MessageLog ("Err " ++ (show err))
+                  ]
+          Nothing ->
+              return [
+                      showMessage MessageError "Client notification textDocument/didChange is missing params"
+                  ]
 
 handleRequest (Right (ClientNotification method params))
     = return [
@@ -197,14 +112,12 @@ handleRequest (Right (ClientNotification method params))
 
 handleRequest (Right (Request msgID method params))
     = return [
-              showMessage MessageError $ "Unknown request from client: " ++ (show method),
-              ErrorResponse {
-                  seMsgID = Just msgID,
-                  seError = JSONRPC.Error JSONRPC.methodNotFound "method not found" Nothing
-              }
-          ]
-
-
+        showMessage MessageError $ "Unknown request from client: " ++ (show method),
+        ErrorResponse {
+            seMsgID = Just msgID,
+            seError = JSONRPC.Error JSONRPC.methodNotFound "method not found" Nothing
+        }
+    ]
 
 data ServerMessageLevel = MessageError |
                           MessageWarning |
