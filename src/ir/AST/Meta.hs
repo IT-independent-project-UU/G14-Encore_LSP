@@ -1,30 +1,4 @@
-module AST.Meta (
-  Position(SingletonPos, RangePos),
-  Meta,
-  setType,
-  setSugared,
-  getSugared,
-  setEndPos,
-  isFree,
-  isCaptured,
-  makeFree,
-  makeCaptured,
-  getMetaArrowType,
-  setMetaArrowType,
-  makePattern,
-  isPattern,
-  getPos,
-  getType,
-  meta,
-  newPos,
-  isStat,
-  makeStat,
-  showPos,
-  metaClosure,
-  metaTask,
-  getMetaId,
-  showSourcePos
-) where
+module AST.Meta where
 
 import Text.Megaparsec(unPos, SourcePos(..))
 import Data.Maybe
