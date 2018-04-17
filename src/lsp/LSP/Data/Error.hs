@@ -1,12 +1,5 @@
 module LSP.Data.Error (
-  Error(..),
-  ErrorType(..),
-  fromTCError,
-  fromTCErrors,
-  fromTCWarning,
-  fromTCWarnings,
-  fromParsecError,
-  fromErrorMessage
+  Error
 ) where
 
 -- ###################################################################### --
@@ -53,17 +46,14 @@ data Error = Error{
 -- ###################################################################### --
 
 extractTCErrorPosition :: TCError -> Position
-extractTCErrorPosition error@(TCError errorType []) = ((0, 0), (0, 0))
 extractTCErrorPosition error@(TCError errorType backtrace) =
     case fst (head backtrace) of
         (ASTMeta.SingletonPos startPos) ->
-            ((getPosLine startPos - 1, getPosCol startPos - 1),
-            (getPosLine startPos - 1, getPosCol startPos - 1))
+            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
+            (fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)))
         (ASTMeta.RangePos startPos endPos) ->
-            ((getPosLine startPos - 1, getPosCol startPos - 1),
-            (getPosLine endPos - 1, getPosCol endPos - 1))
-    where getPosLine = fromIntegral . unPos . sourceLine
-          getPosCol  = fromIntegral . unPos . sourceColumn
+            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
+            (fromIntegral(unPos $ sourceLine $ endPos), fromIntegral(unPos $ sourceColumn $ endPos)))
 
 extractTCWarningPosition :: TCWarning -> Position
 extractTCWarningPosition warning = ((0,0), (0,0))

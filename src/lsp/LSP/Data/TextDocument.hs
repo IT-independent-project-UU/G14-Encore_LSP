@@ -8,14 +8,29 @@ module LSP.Data.TextDocument (
     applyTextDocumentChange
 ) where
 
+-- ###################################################################### --
+-- Section: Imports
+-- ###################################################################### --
+
+-- Standard
 import Data.Aeson
 import Data.String.Utils (split, join)
+
+-- LSP
+import LSP.Data.Error
+
+
+-- ###################################################################### --
+-- Section: Data
+-- ###################################################################### --
 
 data TextDocument = TextDocument {
     tdUri :: String,
     languageId :: String,
     tdVersion :: Int,
-    contents :: String
+    contents :: String,
+    errors :: [Error],
+    warnings :: [Error]
 } deriving (Show)
 
 data TextDocumentChange = TextDocumentChange {
@@ -38,7 +53,9 @@ applyTextDocumentChange textDocumentChange textDocument
         tdVersion  = version textDocument,
         contents   = applyTextChange (range textDocumentChange)
                                      (text textDocumentChange)
-                                     (contents textDocument)
+                                     (contents textDocument),
+        errors     = [],
+        warnings   = []
     }
 
 applyTextChange :: ((Int, Int), (Int, Int)) -> String -> String -> String
@@ -78,7 +95,9 @@ instance FromJSON TextDocument where
             tdUri = uri,
             languageId = id,
             tdVersion = version,
-            contents = text
+            contents = text,
+            errors = [],
+            warnings = []
         }
 
 instance FromJSON TextDocumentChange where
