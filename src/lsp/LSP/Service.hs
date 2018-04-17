@@ -109,9 +109,8 @@ startServer (TCPServer port) = do
         (client, addr, _) <- accept sock
         putStrLn $ "connection from " ++ (show addr)
 
-        contents <- hGetContents client
-
-        forkIO $ do let responseStream = handleClient contents
+        forkIO $ do contents <- hGetContents client
+                    let responseStream = handleClient contents
                     hPutStr client responseStream
 
 startServer (TCPClient host port) = do
