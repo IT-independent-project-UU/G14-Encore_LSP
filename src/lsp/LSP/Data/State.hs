@@ -30,4 +30,3 @@ changeTextDocument documentChange (LSPState textDocuments) =
             LSPState $ Map.insert (uri documentChange)
                                   (foldr applyTextDocumentChange textDocument (changes documentChange))
                                   textDocuments
-
