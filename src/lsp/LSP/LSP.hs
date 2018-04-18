@@ -4,16 +4,25 @@ module LSP.LSP (
     handleClient
 ) where
 
+-- ###################################################################### --
+-- Section: Imports
+-- ###################################################################### --
+
+-- Standard
 import Control.Monad.State
 import Data.Aeson as Aeson
 import Data.Aeson.Types
 import Data.Text (pack)
 
+-- LSP
 import qualified LSP.Base as Base
 import LSP.JSONRPC as JSONRPC
 import LSP.Data.State as State
 import LSP.Data.TextDocument
-import LSP.Change
+
+-- ###################################################################### --
+-- Section: Functions
+-- ###################################################################### --
 
 decodeMessageStream :: String -> ([Either String JSONRPC.ClientMessage], Maybe String)
 decodeMessageStream input =
