@@ -13,6 +13,7 @@ import qualified LSP.Base as Base
 import LSP.JSONRPC as JSONRPC
 import LSP.Data.State as State
 import LSP.Data.TextDocument
+import LSP.Change
 
 decodeMessageStream :: String -> ([Either String JSONRPC.ClientMessage], Maybe String)
 decodeMessageStream input =

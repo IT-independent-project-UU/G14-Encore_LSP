@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module LSP.Producer (
-    produceProgramFromSource
+    produceAndUpdateState
 ) where
 
 -- ###################################################################### --
@@ -32,7 +32,9 @@ import Typechecker.TypeError
 import Utils
 
 -- LSP
-import LSP.Database
+import LSP.Data.TextDocument
+import LSP.Data.Error
+import LSP.Data.State
 
 -- ###################################################################### --
 -- Section: Support
@@ -52,79 +54,60 @@ preludePaths =
 -- Section: Functions
 -- ###################################################################### --
 
-{-
-produceProgramFromFile :: [FilePath] -> String -> IO ProgramTable
-produceProgramFromFile filePaths source = do
-    let sourceName = head filePaths
--}
-
-
-
-produceProgramFromSource :: String -> String -> IO (DBProgramTable) 
-produceProgramFromSource sourceName source = do
+produceAndUpdateState :: FilePath -> String -> LSPState -> IO (LSPState)
+produceAndUpdateState sourceName source state = do
     -- Parse program to produce AST
     (ast, error) <- case parseEncoreProgram sourceName source of
         Right ast   -> return (ast, Nothing)
-        Left error  -> return (blankProgram, Just error)
+        Left error  -> return ((makeBlankAST sourceName), Just error)
 
     case error of
-        Just e -> do 
+        Just e -> do
             --print "Failed to parse program"
-            let dbError = fromParsecError e
-            let dbProgram = (makeDBProgram (blankNamedProgram sourceName) [dbError] [])
-            let dbTable = (Map.insert sourceName dbProgram (Map.empty :: DBProgramTable))
-            return (dbTable)
+            let error = fromParsecError e
+            let newState = (addTextDocument (makeBlankTextDocument sourceName) state)
+            return (newState)
         Nothing -> do
             -- Build program table from AST
             programTable <- buildProgramTable preludePaths preludePaths ast
             let desugaredTable = fmap desugarProgram programTable
 
-            -- Convert the desugared table into a DBProgramTable
-            let dbTable = convertFromProgramTable desugaredTable
+            -- Convert the desugared table into a LSPState
+            let lspState = convertFromProgramTable desugaredTable
 
             -- Precheck and typecheck the table
-            precheckedTable <- producerPrecheck dbTable
+            precheckedTable <- producerPrecheck lspState
             typecheckedTable <- producerTypecheck precheckedTable
             return (typecheckedTable)
 
+updateTextDocumentInState :: LSPState -> TextDocument -> String -> IO (LSPState)
+updateTextDocumentInState state document source = do
+    case Map.loopup (tdUri document) (textDocuments state) of
+      Just doc -> do
+        let newDoc = TextDocument {
+              tdUri = tdUri doc,
 
-{- Returns a blank program  -}
-blankProgram :: Program
-blankProgram = Program{
-    source = "",
-    moduledecl = NoModule,
-    etl = [],
-    imports = [],
-    typedefs = [],
-    functions = [],
-    traits = [],
-    classes = []
-}
+                                  }
 
-{- Returns a blank program with a name -}
-blankNamedProgram :: String -> Program
-blankNamedProgram name = Program{
-    source = name,
-    moduledecl = NoModule,
-    etl = [],
-    imports = [],
-    typedefs = [],
-    functions = [],
-    traits = [],
-    classes = []
-}
+
+convertFromProgramTable :: ProgramTable -> TextDocumentMap
+convertFromProgramTable table =
+    fmap (_convertFromProgramSingle) table
+    where
+        _convertFromProgramSingle :: Program -> TextDocument
+        _convertFromProgramSingle program = (makeBlankTextDocument (source program))
 
 -- ###################################################################### --
 -- Section: Type checking
 -- ###################################################################### --
 
-producerPrecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
+producerPrecheckProgram :: (Map.Map FilePath LookupTable) -> TextDocument -> IO (TextDocument)
 producerPrecheckProgram lookupTable program = do
     case precheckProgram lookupTable (convertToProgram program) of
         (Right newProgram, warnings)    -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
         (Left error, warnings)          -> return $ makeDBProgram blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 
-producerPrecheck :: DBProgramTable -> IO (DBProgramTable)
+producerPrecheck :: LSPState -> IO (LSPState)
 producerPrecheck programTable = do
     let lookupTable = fmap buildLookupTable (convertToProgramTable programTable)
     mapM (_producerPrecheck lookupTable) programTable
@@ -133,13 +116,13 @@ producerPrecheck programTable = do
             (precheckedProgram) <- (producerPrecheckProgram lookupTable program)
             return (precheckedProgram)
 
-producerTypecheckProgram :: (Map.Map FilePath LookupTable) -> DBProgram -> IO (DBProgram)
+producerTypecheckProgram :: (Map.Map FilePath LookupTable) -> TextDocument -> IO (TextDocument)
 producerTypecheckProgram lookupTable program = do
     case typecheckProgram lookupTable (convertToProgram program) of
         (Right (env, newProgram), warnings)     -> return $ makeDBProgram newProgram [] (fromTCWarnings warnings)
         (Left error, warnings)   -> return $ makeDBProgram blankProgram (fromTCErrors [error]) (fromTCWarnings warnings)
 
-producerTypecheck :: DBProgramTable -> IO (DBProgramTable)
+producerTypecheck :: LSPState -> IO (LSPState)
 producerTypecheck programTable = do
     let lookupTable = fmap buildLookupTable (convertToProgramTable programTable)
     mapM (_producerTypecheck lookupTable) programTable

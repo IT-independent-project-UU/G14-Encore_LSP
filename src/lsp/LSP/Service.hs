@@ -22,7 +22,6 @@ import AST.AST
 -- LSP imports
 import LSP.LSP
 import LSP.Producer
-import LSP.Database
 
 -- ###################################################################### --
 -- Section: Data
@@ -40,67 +39,17 @@ data ConnectionParams
 -- Section: Functions
 -- ###################################################################### --
 
-getProgramFromStdioAux :: String -> IO (String)
-getProgramFromStdioAux input
-  | input == ['\n'] = return ['\n']
-  | otherwise = do
-      a <- getProgramFromStdio
-      return $ input ++ ['\n'] ++ a
-
-getProgramFromStdio :: IO (String)
-getProgramFromStdio = do
-  ok <- hIsEOF stdin
-  if ok then do
-    return []
-  else do
-    input <- getLine
-    getProgramFromStdioAux input
-
 {- Start the Encore compiler in LSP mode. This will handle events from
 a client and handle them accordingly.
 Param: ConnectionParams specifying mode and possibly host and port
 -}
 startServer :: ConnectionParams -> IO ()
 startServer STDIO = do
-    -- run like this: cat playground/main.enc | encorec -s stdio
-    program <- getProgramFromStdio
-    progTable <- produceProgramFromSource ":srv:" program
-    {-
-        ("active class Main\n" ++
-        "   def main(): unit\n" ++
-        "       println(\"Hello embedded source\")\n" ++
-        "   end\n" ++
-        "end")
-    -}
-
-    let db = updateProgramTable makeDatabase progTable
-
-    print $ "Size: " ++ show (Map.size $ getDatabasePrograms db)
-
-    case lookupClass db ":srv:" "Main" of
-        Just cd -> do
-            print "Found class"
-        Nothing -> do
-            print "Did not found class"
-
-    --dumpDBProgramTable progTable
-
-    --case hasProgramTableError progTable of
-    --    True -> print "Error haha!!"
-    --    False -> return ()
-
-    --print $ "Size: " ++ show (Map.size progTable)
-
-    --case (lookupClass progTable)
-
-
-    return ()
-
-    {-contents <- getContents
+    contents <- getContents
     let responseStream = handleClient contents
 
     hSetBuffering stdout NoBuffering
-    hPutStr stdout responseStream-}
+    hPutStr stdout responseStream
 
 startServer (TCPServer port) = do
     sock <- listenOn $ PortNumber $ fromInteger port
