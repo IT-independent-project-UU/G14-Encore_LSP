@@ -2,7 +2,8 @@ module LSP.Data.State (
     TextDocumentMap,
     LSPState,
     initial,
-    addTextDocument
+    addTextDocument,
+    changeTextDocument
 ) where
 
 -- ###################################################################### --
@@ -37,3 +38,12 @@ initial = LSPState {
 addTextDocument :: TextDocument -> LSPState -> LSPState
 addTextDocument newDocument (LSPState textDocuments) =
     LSPState (Map.insert (uri newDocument) newDocument textDocuments)
+
+changeTextDocument :: TextDocumentChange -> LSPState -> LSPState
+changeTextDocument documentChange (LSPState textDocuments) =
+    case Map.lookup (uri documentChange) textDocuments of
+        Nothing -> LSPState textDocuments
+        Just textDocument ->
+            LSPState $ Map.insert (uri documentChange)
+                                  (foldr applyTextDocumentChange textDocument (changes documentChange))
+                                  textDocuments

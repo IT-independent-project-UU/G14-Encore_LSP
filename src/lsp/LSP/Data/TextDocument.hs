@@ -2,70 +2,70 @@
 
 module LSP.Data.TextDocument (
     TextDocument(..),
+    TextDocumentChange(..),
     uri,
     version,
-    makeBlankTextDocument
+    applyTextDocumentChange
 ) where
 
 -- ###################################################################### --
 -- Section: Imports
 -- ###################################################################### --
 
--- Standard
 import Data.Aeson
 import Data.String.Utils (split, join)
-
--- Encore
-import AST.AST
-
--- LSP
-import LSP.Data.Error
 
 -- ###################################################################### --
 -- Section: Data
 -- ###################################################################### --
 
 data TextDocument = TextDocument {
-    tdUri      :: String,
+    tdUri :: String,
     languageId :: String,
-    tdVersion  :: Int,
-    contents   :: String,
-    ast        :: Program,
-    errors     :: [Error],
-    warnings   :: [Error]
+    tdVersion :: Int,
+    contents :: String
 } deriving (Show)
+
+data TextDocumentChange = TextDocumentChange {
+    tdcUri :: String,
+    tdcVersion :: Int,
+    changes :: [TextDocumentContentChange]
+}
+
+data TextDocumentContentChange = TextDocumentContentChange {
+    range :: ((Int, Int), (Int, Int)),
+    rangeLength :: Int,
+    text :: String
+}
 
 -- ###################################################################### --
 -- Section: Functions
 -- ###################################################################### --
 
-makeBlankTextDocument :: String -> TextDocument
-makeBlankTextDocument name = TextDocument{
-    tdUri      = name,
-    languageId = "encore",
-    tdVersion  = 1,
-    contents   = "",
-    ast        = makeBlankAST name,
-    errors     = [],
-    warnings   = []
-}
+applyTextDocumentChange :: TextDocumentContentChange -> TextDocument -> TextDocument
+applyTextDocumentChange textDocumentChange textDocument
+    = TextDocument {
+        tdUri      = uri textDocument,
+        languageId = languageId textDocument,
+        tdVersion  = version textDocument,
+        contents   = applyTextChange (range textDocumentChange)
+                                     (text textDocumentChange)
+                                     (contents textDocument)
+    }
 
-{-TODO move into AST.AST -}
-{- Returns a blank program with a name -}
-makeBlankAST :: FilePath -> Program
-makeBlankAST name = Program{
-    source = name,
-    moduledecl = NoModule,
-    etl = [],
-    imports = [],
-    typedefs = [],
-    functions = [],
-    traits = [],
-    classes = []
-}
+applyTextChange :: ((Int, Int), (Int, Int)) -> String -> String -> String
+applyTextChange ((startLine, startChar), (endLine, endChar))
+                replacement
+                text
+    = let textLines = split "\n" text
+          startSegment = join "\n" $ take startLine textLines ++
+                                     [take startChar $ textLines !! startLine]
+          endSegment = join "\n" $ (drop endChar $ textLines !! endLine) :
+                                   drop (endLine+1) textLines
+      in startSegment ++ replacement ++ endSegment
 
 -- ###################################################################### --
--- Section: Type classes
+-- Section: Type Classes
 -- ###################################################################### --
 
 class TextDocumentURI a where
@@ -78,6 +78,11 @@ instance TextDocumentURI TextDocument where
 instance TextDocumentVersion TextDocument where
     version = tdVersion
 
+instance TextDocumentURI TextDocumentChange where
+    uri = tdcUri
+instance TextDocumentVersion TextDocumentChange where
+    version = tdcVersion
+
 instance FromJSON TextDocument where
     parseJSON = withObject "params" $ \o -> do
         document <- o .: "textDocument"
@@ -89,8 +94,37 @@ instance FromJSON TextDocument where
             tdUri = uri,
             languageId = id,
             tdVersion = version,
-            contents = text,
-            ast = makeBlankAST uri, -- TODO dont be blank
-            errors = [],
-            warnings = []
+            contents = text
+        }
+
+instance FromJSON TextDocumentChange where
+    parseJSON = withObject "params" $ \o -> do
+        identifier  <- o .: "textDocument"
+        uri         <- identifier .: "uri"
+        version     <- identifier .: "version"
+
+        changes     <- o .: "contentChanges"
+
+        return TextDocumentChange {
+            tdcUri = uri,
+            tdcVersion = version,
+            changes = changes
+        }
+
+instance FromJSON TextDocumentContentChange where
+    parseJSON = withObject "TextDocumentChange" $ \o -> do
+        range       <- o .: "range"
+        rangeStart  <- range .: "start"
+        startLine   <- rangeStart .: "line"
+        startChar   <- rangeStart .: "character"
+        rangeEnd    <- range .: "end"
+        endLine     <- rangeEnd .: "line"
+        endChar     <- rangeEnd .: "character"
+        rangeLength <- o .: "rangeLength"
+        text        <- o .: "text"
+
+        return TextDocumentContentChange {
+            range = ((startLine, startChar), (endLine, endChar)),
+            rangeLength = rangeLength,
+            text = text
         }
