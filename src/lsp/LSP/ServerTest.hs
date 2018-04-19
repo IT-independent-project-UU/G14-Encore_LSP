@@ -19,6 +19,8 @@ import AST.AST
 -- LSP imports
 import LSP.LSP
 import LSP.Producer
+import LSP.Data.State
+import LSP.Data.TextDocument
 
 -- ###################################################################### --
 -- Section: Functions
@@ -44,6 +46,24 @@ testServer :: IO ()
 testServer = do
   -- run like this: cat playground/main.enc | encorec -s stdio
     program <- getProgramFromStdio
+    let textDocument = TextDocument {
+          tdUri = "magic",
+          languageId = "encore",
+          tdVersion = 1,
+          contents = program
+    }
+
+    let lspState = addTextDocument textDocument initial
+
+    newState <- produceTextDocument textDocument lspState
+
+    case Map.lookup "magic" (programs newState) of
+      Just prog -> print prog
+      Nothing -> print "hey"
+
+ ------------------------- ||| ----------------------------------------
+
+{-
     progTable <- produceProgramFromSource ":srv:" program
 
     let db = updateProgramTable makeDatabase progTable
@@ -55,4 +75,5 @@ testServer = do
             print "Found class"
         Nothing -> do
             print "Did not found class"
+-}
     return ()

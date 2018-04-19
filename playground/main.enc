@@ -3,9 +3,3 @@ active class Main
         println ("Hello Encore 14")
     end
 end
-
-active class CppForever
-    def someFunc() : unit
-        println ("Some func")
-    end
-end
