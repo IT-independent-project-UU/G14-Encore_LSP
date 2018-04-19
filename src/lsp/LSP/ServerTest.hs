@@ -15,12 +15,14 @@ import System.IO
 -- Encore imports
 import ModuleExpander
 import AST.AST
+import AST.PrettyPrinter
 
 -- LSP imports
 import LSP.LSP
 import LSP.Producer
 import LSP.Data.State
 import LSP.Data.TextDocument
+import LSP.Data.Program
 
 -- ###################################################################### --
 -- Section: Functions
@@ -58,8 +60,11 @@ testServer = do
     newState <- produceTextDocument textDocument lspState
 
     case Map.lookup "magic" (programs newState) of
-      Just prog -> print prog
+      Just prog -> putStrLn $ show (ppProgram (ast $ fst prog))
       Nothing -> print "hey"
+
+
+
 
  ------------------------- ||| ----------------------------------------
 
