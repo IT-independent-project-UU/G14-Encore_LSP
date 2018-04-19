@@ -4,6 +4,6 @@ active class Main
     end
 end
 
-fun wow () : unit
+fun wow (x: int, y: int) : unit
   println("super")
 end
