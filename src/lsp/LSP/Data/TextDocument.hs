@@ -5,7 +5,8 @@ module LSP.Data.TextDocument (
     TextDocumentChange(..),
     uri,
     version,
-    applyTextDocumentChange
+    applyTextDocumentChange,
+    makeBlankTextDocument
 ) where
 
 -- ###################################################################### --
@@ -63,6 +64,14 @@ applyTextChange ((startLine, startChar), (endLine, endChar))
           endSegment = join "\n" $ (drop endChar $ textLines !! endLine) :
                                    drop (endLine+1) textLines
       in startSegment ++ replacement ++ endSegment
+
+makeBlankTextDocument :: String -> TextDocument
+makeBlankTextDocument name = TextDocument{
+    tdUri      = name,
+    languageId = "encore",
+    tdVersion  = 1,
+    contents   = ""
+}
 
 -- ###################################################################### --
 -- Section: Type Classes
