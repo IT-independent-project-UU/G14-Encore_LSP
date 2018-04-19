@@ -1,0 +1,41 @@
+active class Main
+  def main() : unit
+    globalFunction()
+
+    var truth = new Truth
+    truth ! tell("c++ is a nice language")
+
+    val obj1 = new Foo
+    val obj2 = new Foo
+    obj1.setID("obj1")
+    obj2.setID("obj2")
+    obj1.printID()
+    obj2.printID()
+  end
+end
+
+local class Foo
+  var id : String
+
+  def setID(new_id : String) : unit
+    this.id = new_id
+  end
+
+  def printID() : unit
+    var i = 0
+    while i < 5 do
+      i = i + 1
+      println(this.id)
+    end
+  end
+end
+
+fun globalFunction() : unit
+  println("calling global function")
+end
+
+active class Truth
+  def tell(s : String) : unit
+    println(s)
+  end
+end
