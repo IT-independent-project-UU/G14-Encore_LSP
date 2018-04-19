@@ -60,7 +60,10 @@ testServer = do
     newState <- produceTextDocument textDocument lspState
 
     case Map.lookup "magic" (programs newState) of
-      Just prog -> putStrLn $ show (ppProgram (ast $ fst prog))
+      Just prog -> do
+        findNodeFromPosition (2, 9) (fst prog)
+        --putStrLn $ show (ppProgram (ast $ fst prog)) -- putStrLn $ show (ast $ fst prog)
+        --putStrLn $ show (contents (snd prog))
       Nothing -> print "hey"
 
 
