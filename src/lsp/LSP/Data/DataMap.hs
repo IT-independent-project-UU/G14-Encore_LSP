@@ -18,9 +18,3 @@ import LSP.Data.TextDocument
 type LSPData = (Program, TextDocument)
 
 type DataMap = Map String LSPData
-
-
-
--- ###################################################################### --
--- Section: Functions
--- ###################################################################### --
