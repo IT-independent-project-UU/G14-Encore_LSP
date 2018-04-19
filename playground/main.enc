@@ -1,5 +1,9 @@
 active class Main
     def main() : unit
-        println ("Hello Encore 14")
+        println("Hello Encore 14")
     end
+end
+
+fun wow () : unit
+  println("super")
 end
