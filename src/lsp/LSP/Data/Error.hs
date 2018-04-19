@@ -1,6 +1,11 @@
 module LSP.Data.Error (
   Error,
-  fromParsecError
+  fromTCError,
+  fromTCErrors,
+  fromTCWarning,
+  fromTCWarnings,
+  fromParsecError,
+  fromErrorMessage
 ) where
 
 -- ###################################################################### --
