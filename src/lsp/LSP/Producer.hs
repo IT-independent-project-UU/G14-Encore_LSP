@@ -66,7 +66,7 @@ produceAndUpdateState path dataMap = do
       Just (program, textDocument) -> do
         let source = contents textDocument
         -- Parse program to produce AST
-        (ast, error) <- case parseEncoreProgram path source of
+        (_ast, error) <- case parseEncoreProgram path source of
           Right ast   -> return (ast, Nothing)
           Left error  -> return ((makeBlankAST path), Just error)
 
@@ -75,7 +75,7 @@ produceAndUpdateState path dataMap = do
             --print "Failed to parse program"
             let lspError = fromParsecError e
             let newProgram = Program {
-                  program = ast,
+                  ast = _ast,
                   errors = [lspError],
                   warnings = []
             }
@@ -83,7 +83,7 @@ produceAndUpdateState path dataMap = do
             return (newDataMap)
           Nothing -> do
             -- Build program table from AST
-            programTable <- buildProgramTable preludePaths preludePaths ast
+            programTable <- buildProgramTable preludePaths preludePaths _ast
             let desugaredTable = fmap desugarProgram programTable
 
             -- Convert the desugared table into a LSPState
@@ -93,7 +93,9 @@ produceAndUpdateState path dataMap = do
             precheckedTable <- producerPrecheck newDataMap
             typecheckedTable <- producerTypecheck precheckedTable
 
+
             let cleanedMap = cleanDataMap typecheckedTable
+            --print $ "aa: " ++ show cleanedMap
             return (magicMerger dataMap cleanedMap)
 
 cleanDataMap :: DataMap -> DataMap
@@ -116,16 +118,16 @@ convertFromProgramTable :: FilePath -> ProgramTable -> DataMap
 convertFromProgramTable path table =
     fmap (convertFromProgram path) table
 
+convertFromProgram :: FilePath -> AST.Program -> LSPData
+convertFromProgram path _ast =
+  (Program {ast = _ast, errors = [], warnings = []}, makeBlankTextDocument path)
+
 convertToProgramTable :: DataMap -> ProgramTable
 convertToProgramTable map =
     fmap convertToProgram map
 
-convertFromProgram :: FilePath -> AST.Program -> LSPData
-convertFromProgram path program =
-  (makeProgram path, makeBlankTextDocument path)
-
 convertToProgram :: LSPData -> AST.Program
-convertToProgram (_program, textDocument) = program _program
+convertToProgram (_program, textDocument) = ast _program
 
 -- ###################################################################### --
 -- Section: Type checking
@@ -136,13 +138,13 @@ producerPrecheckProgram lookupTable lspData@(oldProgram, textDocument) = do
     case precheckProgram lookupTable (convertToProgram lspData) of
         (Right newProgram, newWarnings) ->
           return (Program {
-              program = newProgram,
+              ast = newProgram,
               errors = [],
               warnings = fromTCWarnings newWarnings
           }, textDocument)
         (Left error, newWarnings)->
           return (Program {
-              program = program oldProgram,
+              ast = ast oldProgram,
               errors = [fromTCError error],
               warnings = fromTCWarnings newWarnings
           }, textDocument)
@@ -161,13 +163,13 @@ producerTypecheckProgram lookupTable lspData@(oldProgram, textDocument) = do
     case typecheckProgram lookupTable (convertToProgram lspData) of
         (Right (_, newProgram), newWarnings) ->
           return (Program {
-              program = newProgram,
+              ast = newProgram,
               errors = [],
               warnings = fromTCWarnings newWarnings
           }, textDocument)
         (Left error, newWarnings)->
           return (Program {
-              program = program oldProgram,
+              ast = ast oldProgram,
               errors = [fromTCError error],
               warnings = fromTCWarnings newWarnings
           }, textDocument)
