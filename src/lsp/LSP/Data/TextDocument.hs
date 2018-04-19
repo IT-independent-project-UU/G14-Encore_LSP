@@ -13,8 +13,12 @@ module LSP.Data.TextDocument (
 -- Section: Imports
 -- ###################################################################### --
 
+-- Standard
 import Data.Aeson
 import Data.String.Utils (split, join)
+
+-- LSP
+import LSP.Data.Position
 
 -- ###################################################################### --
 -- Section: Data
@@ -34,7 +38,7 @@ data TextDocumentChange = TextDocumentChange {
 }
 
 data TextDocumentContentChange = TextDocumentContentChange {
-    range :: ((Int, Int), (Int, Int)),
+    range :: Range,
     rangeLength :: Int,
     text :: String
 }
@@ -54,7 +58,7 @@ applyTextDocumentChange textDocumentChange textDocument
                                      (contents textDocument)
     }
 
-applyTextChange :: ((Int, Int), (Int, Int)) -> String -> String -> String
+applyTextChange :: Range -> String -> String -> String
 applyTextChange ((startLine, startChar), (endLine, endChar))
                 replacement
                 text
