@@ -93,9 +93,7 @@ produceAndUpdateState path dataMap = do
             precheckedTable <- producerPrecheck newDataMap
             typecheckedTable <- producerTypecheck precheckedTable
 
-
             let cleanedMap = cleanDataMap typecheckedTable
-            --print $ "aa: " ++ show cleanedMap
             return (magicMerger dataMap cleanedMap)
 
 cleanDataMap :: DataMap -> DataMap
