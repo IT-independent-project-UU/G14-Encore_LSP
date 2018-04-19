@@ -15,7 +15,7 @@ import LSP.Data.Error
 -- ###################################################################### --
 
 data Program = Program {
-  program :: AST.Program,
+  ast :: AST.Program,
   errors :: [Error],
   warnings :: [Error]
 } deriving (Show)
@@ -24,9 +24,9 @@ data Program = Program {
 -- Section: Functions
 -- ###################################################################### --
 
-makeProgram :: FilePath -> Program
-makeProgram path = Program {
-  program = makeBlankAST path,
+makeBlankProgram :: FilePath -> Program
+makeBlankProgram path = Program {
+  ast = makeBlankAST path,
   errors = [],
   warnings = []
 }

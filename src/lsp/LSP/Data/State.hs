@@ -38,7 +38,7 @@ initial = LSPState {
 
 addTextDocument :: TextDocument -> LSPState -> LSPState
 addTextDocument newDocument (LSPState programs) =
-    LSPState (Map.insert (uri newDocument) (makeProgram (uri newDocument), newDocument) programs)
+    LSPState (Map.insert (uri newDocument) (makeBlankProgram (uri newDocument), newDocument) programs)
 
 changeTextDocument :: TextDocumentChange -> LSPState -> LSPState
 changeTextDocument documentChange state@(LSPState programs) =
