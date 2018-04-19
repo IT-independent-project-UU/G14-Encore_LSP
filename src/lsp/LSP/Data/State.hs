@@ -1,9 +1,9 @@
 module LSP.Data.State (
-    TextDocumentMap,
-    LSPState,
+    LSPState(..),
     initial,
     addTextDocument,
-    changeTextDocument
+    changeTextDocument,
+    produceTextDocument
 ) where
 
 -- ###################################################################### --
@@ -15,15 +15,16 @@ import Data.Map as Map hiding (foldr)
 
 -- LSP
 import LSP.Data.TextDocument
+import LSP.Data.Program
+import LSP.Data.DataMap
+import LSP.Producer
 
 -- ###################################################################### --
 -- Section: Data
 -- ###################################################################### --
 
-type TextDocumentMap = Map String TextDocument
-
 data LSPState = LSPState {
-    textDocuments :: TextDocumentMap
+    programs :: DataMap
 } deriving (Show)
 
 -- ###################################################################### --
@@ -32,18 +33,24 @@ data LSPState = LSPState {
 
 initial :: LSPState
 initial = LSPState {
-    textDocuments = Map.empty
+    programs = Map.empty
 }
 
 addTextDocument :: TextDocument -> LSPState -> LSPState
-addTextDocument newDocument (LSPState textDocuments) =
-    LSPState (Map.insert (uri newDocument) newDocument textDocuments)
+addTextDocument newDocument (LSPState programs) =
+    LSPState (Map.insert (uri newDocument) (makeProgram (uri newDocument), newDocument) programs)
 
 changeTextDocument :: TextDocumentChange -> LSPState -> LSPState
-changeTextDocument documentChange (LSPState textDocuments) =
-    case Map.lookup (uri documentChange) textDocuments of
-        Nothing -> LSPState textDocuments
-        Just textDocument ->
+changeTextDocument documentChange state@(LSPState programs) =
+    case Map.lookup (uri documentChange) programs of
+        Nothing -> state
+        Just (program, textDocument) ->
             LSPState $ Map.insert (uri documentChange)
-                                  (foldr applyTextDocumentChange textDocument (changes documentChange))
-                                  textDocuments
+                                  (program, (foldr applyTextDocumentChange textDocument (changes documentChange)))
+                                  programs
+
+produceTextDocument :: TextDocument -> LSPState -> IO (LSPState)
+produceTextDocument textDocument state = do
+  let path = uri textDocument
+  dataMap <- produceAndUpdateState path (programs state)
+  return (LSPState {programs = dataMap})

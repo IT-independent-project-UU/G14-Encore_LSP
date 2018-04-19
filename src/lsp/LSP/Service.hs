@@ -21,7 +21,7 @@ import AST.AST
 
 -- LSP imports
 import LSP.LSP
--- import LSP.Producer
+import LSP.ServerTest
 
 -- ###################################################################### --
 -- Section: Data
@@ -45,6 +45,9 @@ Param: ConnectionParams specifying mode and possibly host and port
 -}
 startServer :: ConnectionParams -> IO ()
 startServer STDIO = do
+    testServer
+    return ()
+
     contents <- getContents
     let responseStream = handleClient contents
 
