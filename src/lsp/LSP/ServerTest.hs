@@ -61,7 +61,7 @@ testServer = do
 
     case Map.lookup "magic" (programs newState) of
       Just prog -> do
-        findNodeFromPosition (2, 9) (fst prog)
+        getProgramInfoForPos (1,6) (fst prog)
         --putStrLn $ show (ppProgram (ast $ fst prog)) -- putStrLn $ show (ast $ fst prog)
         --putStrLn $ show (contents (snd prog))
       Nothing -> print "hey"

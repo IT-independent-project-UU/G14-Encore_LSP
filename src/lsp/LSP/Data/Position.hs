@@ -23,6 +23,7 @@ inRange pos (start, end)
   | fst pos > fst start && fst pos < fst end = True
   | fst pos == fst start && fst pos < fst end && snd pos >= snd start = True
   | fst pos > fst start && fst pos == fst end && snd pos <= snd end = True
+  | fst pos == fst start && fst pos == fst end && snd pos >= snd start && snd pos <= snd end = True
   | True = False -- sorry, had to do it
 
 fromSourcePos :: SourcePos -> Position
