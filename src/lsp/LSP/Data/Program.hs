@@ -1,8 +1,10 @@
- module LSP.Data.Program (
+module LSP.Data.Program (
     Program(..),
     makeBlankProgram,
     makeBlankAST,
-    getProgramInfoForPos
+    getProgramInfoForPos,
+
+    dumpProgramErrors
  ) where
 
 -- ###################################################################### --
@@ -15,6 +17,7 @@ import System.Exit
 -- Encore
 import qualified AST.AST as AST
 import qualified AST.Meta as ASTMeta
+import qualified Typechecker.Util as TypeUtil
 
 -- LSP
 import LSP.Data.Error
@@ -77,8 +80,10 @@ getProgramInfoForPos pos program = do
             
 
 {- -}
-handleSingletonPos :: String
-handleSingletonPos = "############ BAD ################"
+handleSingletonPos :: IO (Maybe String)
+handleSingletonPos = do
+    die "############ BAD ################"
+    return Nothing
 
 {- -}
 getProgramInfoFunction :: LSP.Position -> [AST.Function] -> IO (Maybe String)
@@ -86,7 +91,7 @@ getProgramInfoFunction _ [] = return (Nothing)
 getProgramInfoFunction pos (x:xs) =
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.funmeta x)) of
-        ASTMeta.SingletonPos _      -> return (Just handleSingletonPos)
+        ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             -- Check if pos is in function
             case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
@@ -114,7 +119,7 @@ getProgramInfoClass _ [] = return Nothing
 getProgramInfoClass pos (x:xs) = do
     -- Check if pos is singleton or range pos
     case (ASTMeta.getPos (AST.cmeta x)) of
-        ASTMeta.SingletonPos _      -> return (Just handleSingletonPos)
+        ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             -- Check if pos is in class
             case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
@@ -140,29 +145,35 @@ getProgramInfoFieldDecl pos (x:xs) = return Nothing
 getProgramInfoMethodDecl :: LSP.Position -> [AST.MethodDecl] -> IO (Maybe String)
 getProgramInfoMethodDecl _ [] = return Nothing
 getProgramInfoMethodDecl pos (x:xs) = do
-    -- Check if pos is singleton or range pos
-    case (ASTMeta.getPos (AST.mmeta x)) of
-        ASTMeta.SingletonPos _      -> return (Just handleSingletonPos)
-        ASTMeta.RangePos start end  -> do
-            -- Check if pos is in method
-            case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
-                False   -> getProgramInfoMethodDecl pos xs
-                True    -> do
-                    -- Check if pos is on paramDecl
-                    paramDeclResult <- getProgramInfoParamDecl pos (AST.hparams $ AST.mheader x)
-                    case paramDeclResult of
-                        Just s  -> return $ Just s
-                        Nothing -> do
-                            -- Check if pos is in body
-                                bodyInfo <- getProgramInfoExpr pos (AST.mbody x)
-                                case bodyInfo of
-                                    Just s  -> return $ Just s
-                                    Nothing -> do
-                                        -- Check if pos is in local function
-                                        localFunInfo <- getProgramInfoFunction pos (AST.mlocals x)
-                                        case localFunInfo of
-                                            Just s  -> return $ Just s
-                                            Nothing -> return Nothing
+    case AST.isImplicitMethod x of
+        True    -> getProgramInfoMethodDecl pos xs
+        False   -> do
+            -- Check if pos is singleton or range pos
+            case (ASTMeta.getPos (AST.mmeta x)) of
+                ASTMeta.SingletonPos _      -> handleSingletonPos
+                ASTMeta.RangePos start end  -> do
+                    -- Check if pos is in method
+                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                        False   -> getProgramInfoMethodDecl pos xs
+                        True    -> do
+
+                            --putStrLn $ "In method " ++ show (AST.methodName x)
+
+                            -- Check if pos is on paramDecl
+                            paramDeclResult <- getProgramInfoParamDecl pos (AST.hparams $ AST.mheader x)
+                            case paramDeclResult of
+                                Just s  -> return $ Just s
+                                Nothing -> do
+                                    -- Check if pos is in body
+                                    bodyInfo <- getProgramInfoExpr pos (AST.mbody x)
+                                    case bodyInfo of
+                                        Just s  -> return $ Just s
+                                        Nothing -> do
+                                            -- Check if pos is in local function
+                                            localFunInfo <- getProgramInfoFunction pos (AST.mlocals x)
+                                            case localFunInfo of
+                                                Just s  -> return $ Just s
+                                                Nothing -> return Nothing
                     
 {-  -}
 getProgramInfoParamDecl :: LSP.Position -> [AST.ParamDecl] -> IO (Maybe String)
@@ -170,7 +181,7 @@ getProgramInfoParamDecl _ [] = return Nothing
 getProgramInfoParamDecl pos (x:xs) =
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.pmeta x)) of
-        ASTMeta.SingletonPos _ -> return $ Just handleSingletonPos
+        ASTMeta.SingletonPos _ -> handleSingletonPos
         ASTMeta.RangePos start end -> do
             -- Check if pos is on parameter
             case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
@@ -180,133 +191,202 @@ getProgramInfoParamDecl pos (x:xs) =
 {- -}
 getProgramInfoExpr :: LSP.Position -> AST.Expr -> IO (Maybe String)
 getProgramInfoExpr pos expr = do
-    case expr of
-        AST.Skip meta 
-            -> return $ Just "Skip"
-        AST.Break meta 
-            -> return $ Just "Break"
-        AST.Continue meta 
-            -> return $ Just "Continue"
-        AST.TypedExpr meta body ty 
-            -> return $ Just "Typed expression"
-        AST.MethodCall meta tyArgs target name args 
-            -> return $ Just $ "Method call: " ++ show name
-        AST.MessageSend meta tyArgs target name args 
-            -> return $ Just $ "MessageSend: " ++ show name
-        AST.Optional meta optTag 
-            -> return $ Just "Optional"
-        AST.ExtractorPattern meta ty name arg 
-            -> return $ Just "ExtractorPattern"
-        AST.FunctionCall meta typeArgs name args 
-            -> return $ Just $ "Function call: " ++ show name
-        AST.FunctionAsValue meta tyArgs name 
-            -> return $ Just "Function as value"
-        AST.Closure meta params maybeType body 
-            -> return $ Just "Closure"
-        AST.PartySeq meta par seqFun 
-            -> return $ Just "PartySeq"
-        AST.PartyPar meta parl parr 
-            -> return $ Just "PartyPar"
-        AST.PartyReduce meta seqFun init par runassoc -> return $ Just "PartyReduce"
-        AST.Async meta body 
-            -> return $ Just "Async"
-        AST.Return meta value 
-            -> return $ Just "Return"
-        AST.MaybeValue meta container 
-            -> return $ Just "MaybeValue"
-        AST.Tuple meta args 
-            -> return $ Just "Tuple"
-        AST.Let meta mutability decl body 
-            -> return $ Just "Let"
-        AST.MiniLet meta mutability decls 
-            -> return $ Just "MiniLet"
-        AST.Seq meta seq 
-            -> return $ Just "Seq"
-        AST.IfThenElse meta cond thn els 
-            -> return $ Just "IfThenElse"
-        AST.IfThen meta cond thn 
-            -> return $ Just "IfThen"
-        AST.Unless meta cond thn 
-            -> return $ Just "Unless"
-        AST.While meta cond body 
-            -> return $ Just "While"
-        AST.DoWhile meta cond body 
-            -> return $ Just "DoWhile"
-        AST.Repeat meta name times body 
-            -> return $ Just "Repeat"
-        AST.For meta name step src body 
-            -> return $ Just "For"
-        AST.Match meta arg clauses 
-            -> return $ Just "Match"
-        AST.Borrow meta target name body 
-            -> return $ Just "Borrow"
-        AST.Get meta value 
-            -> return $ Just "Get"
-        AST.Forward meta forwardExpr 
-            -> return $ Just "ForwardExpr"
-        AST.Yield meta value 
-            -> return $ Just "Yield"
-        AST.Eos meta 
-            -> return $ Just "EOS"
-        AST.IsEos meta target 
-            -> return $ Just "IsEOS"
-        AST.StreamNext meta target 
-            -> return $ Just "StreamNext"
-        AST.Await meta value 
-            -> return $ Just "Await"
-        AST.Suspend meta 
-            -> return $ Just "Suspend"
-        AST.FutureChain meta future chain 
-            -> return $ Just "FutureChain"
-        AST.FieldAccess meta target name 
-            -> return $ Just "FieldAccess"
-        AST.ArrayAccess meta target name 
-            -> return $ Just "ArrayAccess"
-        AST.ArraySize meta target 
-            -> return $ Just "ArraySize"
-        AST.ArrayNew meta ty size
-            -> return $ Just "ArrayNew"
-        AST.ArrayLiteral meta args 
-            -> return $ Just "ArrayLiteral"
-        AST.Assign emeta rhs lhs 
-            -> return $ Just "Assign"
-        AST.VarAccess meta name 
-            -> return $ Just "VarAccess"
-        AST.TupleAccess meta target compartment 
-            -> return $ Just "TupleAccess"
-        AST.Consume meta target 
-            -> return $ Just "Consume"
-        AST.Null meta
-            -> return $ Just "Null"
-        AST.BTrue meta 
-            -> return $ Just "True"
-        AST.BFalse meta 
-            -> return $ Just "False"
-        AST.NewWithInit meta ty args 
-            -> return $ Just "NewWithInit"
-        AST.New meta ty 
-            -> return $ Just "New"
-        AST.Print meta file args 
-            -> return $ Just "Print"
-        AST.Exit meta args 
-            -> return $ Just "Exit"
-        AST.Abort meta args 
-            -> return $ Just "Abort"
-        AST.StringLiteral meta literal 
-            -> return $ Just "String literal"
-        AST.CharLiteral meta literal
-            -> return $ Just "Char literal"
-        AST.RangeLiteral meta rstart rstop step 
-            -> return $ Just "Range literal"
-        AST.IntLiteral meta literal 
-            -> return $ Just "Int literal"
-        AST.UIntLiteral meta literal 
-            -> return $ Just "UInt literal"
-        AST.RealLiteral meta literal 
-            -> return $ Just "Real literal"
-        AST.Embed meta ty embedded 
-            -> return $ Just "Embed"
-        AST.Unary meta op operand 
-            -> return $ Just "Unary operation"
-        AST.Binop meta op loper roper 
-            -> return $ Just "Binary operation"
+    -- Check if singleton or range pos
+    case (ASTMeta.getPos (AST.getMeta expr)) of
+        ASTMeta.SingletonPos _ -> handleSingletonPos
+        ASTMeta.RangePos start end -> do
+            case expr of
+                AST.Skip meta 
+                    -> return $ Just "Skip"
+                AST.Break meta 
+                    -> return $ Just "Break"
+                AST.Continue meta 
+                    -> return $ Just "Continue"
+                AST.TypedExpr meta body ty 
+                    -> return $ Just "Typed expression"
+                AST.MethodCall meta tyArgs target name args 
+                    -> return $ Just $ "Method call: " ++ show name
+                AST.MessageSend meta tyArgs target name args 
+                    -> do
+                    -- Check if pos is in message send
+                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                        True    -> return $ Just $ "In message send: " ++ show name
+                        False   -> do
+                            -- Check if pos is in target
+                            targetInfo <- getProgramInfoExpr pos target
+                            case targetInfo of
+                                Just s  -> return $ Just $ "In message send target: " ++ s
+                                Nothing -> return Nothing
+                AST.Optional meta optTag 
+                    -> return $ Just "Optional"
+                AST.ExtractorPattern meta ty name arg 
+                    -> return $ Just "ExtractorPattern"
+                AST.FunctionCall meta typeArgs name args 
+                    -> do
+                    -- Check if pos is in method
+                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                        True    -> return $ Just $ "Function call: " ++ show name
+                        False   -> return Nothing                        
+                AST.FunctionAsValue meta tyArgs name 
+                    -> return $ Just "Function as value"
+                AST.Closure meta params maybeType body 
+                    -> return $ Just "Closure"
+                AST.PartySeq meta par seqFun 
+                    -> return $ Just "PartySeq"
+                AST.PartyPar meta parl parr 
+                    -> return $ Just "PartyPar"
+                AST.PartyReduce meta seqFun init par runassoc -> return $ Just "PartyReduce"
+                AST.Async meta body 
+                    -> return $ Just "Async"
+                AST.Return meta value 
+                    -> return $ Just "Return"
+                AST.MaybeValue meta container 
+                    -> return $ Just "MaybeValue"
+                AST.Tuple meta args 
+                    -> return $ Just "Tuple"
+                AST.Let meta mutability decl body 
+                    -> do
+                    -- Check let body
+                    bodyInfo <- getProgramInfoExpr pos body
+                    case bodyInfo of
+                        Just s  -> return $ Just $ "Let: " ++ s
+                        Nothing -> return Nothing
+                AST.MiniLet meta mutability decls 
+                    -> return $ Just "MiniLet"
+                AST.Seq meta eseq 
+                    -> do
+                    innerInfo <- getProgramInfoBodySeq pos eseq
+                    case innerInfo of
+                        Just s  -> return $ Just $ "Seq: " ++ s
+                        Nothing -> return Nothing
+                AST.IfThenElse meta cond thn els 
+                    -> return $ Just "IfThenElse"
+                AST.IfThen meta cond thn 
+                    -> return $ Just "IfThen"
+                AST.Unless meta cond thn 
+                    -> return $ Just "Unless"
+                AST.While meta cond body 
+                    -> return $ Just "While"
+                AST.DoWhile meta cond body 
+                    -> return $ Just "DoWhile"
+                AST.Repeat meta name times body 
+                    -> return $ Just "Repeat"
+                AST.For meta name step src body 
+                    -> return $ Just "For"
+                AST.Match meta arg clauses 
+                    -> return $ Just "Match"
+                AST.Borrow meta target name body 
+                    -> return $ Just "Borrow"
+                AST.Get meta value 
+                    -> return $ Just "Get"
+                AST.Forward meta forwardExpr 
+                    -> return $ Just "ForwardExpr"
+                AST.Yield meta value 
+                    -> return $ Just "Yield"
+                AST.Eos meta 
+                    -> return $ Just "EOS"
+                AST.IsEos meta target 
+                    -> return $ Just "IsEOS"
+                AST.StreamNext meta target 
+                    -> return $ Just "StreamNext"
+                AST.Await meta value 
+                    -> return $ Just "Await"
+                AST.Suspend meta 
+                    -> return $ Just "Suspend"
+                AST.FutureChain meta future chain 
+                    -> return $ Just "FutureChain"
+                AST.FieldAccess meta target name 
+                    -> return $ Just "FieldAccess"
+                AST.ArrayAccess meta target name 
+                    -> return $ Just "ArrayAccess"
+                AST.ArraySize meta target 
+                    -> return $ Just "ArraySize"
+                AST.ArrayNew meta ty size
+                    -> return $ Just "ArrayNew"
+                AST.ArrayLiteral meta args 
+                    -> return $ Just "ArrayLiteral"
+                AST.Assign emeta rhs lhs 
+                    -> return $ Just "Assign"
+                AST.VarAccess meta qname
+                    -> do
+                    -- Check if pos is in var access
+                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                        False   -> return Nothing
+                        True    -> do
+                            --varResult <- TypeUtil.findVar qname
+                            return Nothing 
+                            {-case varResult of
+                                Nothing 
+                                    -> return $ Just $ "Variable access of untyped: " ++ show qname
+                                Just (name, ty) 
+                                    -> return $ Just $ "Variable access of typed: " ++ show qname-}
+                AST.TupleAccess meta target compartment 
+                    -> return $ Just "TupleAccess"
+                AST.Consume meta target 
+                    -> return $ Just "Consume"
+                AST.Null meta
+                    -> return $ Just "Null"
+                AST.BTrue meta 
+                    -> return $ Just "True"
+                AST.BFalse meta 
+                    -> return $ Just "False"
+                AST.NewWithInit meta ty args 
+                    -> return $ Just "NewWithInit"
+                AST.New meta ty 
+                    -> return $ Just "New"
+                AST.Print meta file args 
+                    -> return $ Just "Print"
+                AST.Exit meta args 
+                    -> return $ Just "Exit"
+                AST.Abort meta args 
+                    -> return $ Just "Abort"
+                AST.StringLiteral meta literal 
+                    -> return $ Just "String literal"
+                AST.CharLiteral meta literal
+                    -> return $ Just "Char literal"
+                AST.RangeLiteral meta rstart rstop step 
+                    -> return $ Just "Range literal"
+                AST.IntLiteral meta literal 
+                    -> return $ Just "Int literal"
+                AST.UIntLiteral meta literal 
+                    -> return $ Just "UInt literal"
+                AST.RealLiteral meta literal 
+                    -> return $ Just "Real literal"
+                AST.Embed meta ty embedded 
+                    -> return $ Just "Embed"
+                AST.Unary meta op operand 
+                    -> return $ Just "Unary operation"
+                AST.Binop meta op loper roper 
+                    -> return $ Just "Binary operation"
+
+            {-
+getProgramInfoSeq :: LSP.Position -> [AST.Expr] -> IO (Maybe String)
+getProgramInfoSeqExpr _ [] = return Nothing
+getProgramInfoSeqExpr pos (x:xs) =
+    case -}
+
+getProgramInfoBodySeq :: LSP.Position -> [AST.Expr] -> IO (Maybe String)
+getProgramInfoBodySeq _ [] = return Nothing
+getProgramInfoBodySeq pos (x:xs) =
+    -- Check if singleton or range pos
+    case (ASTMeta.getPos (AST.getMeta x)) of
+        ASTMeta.SingletonPos _ -> handleSingletonPos
+        ASTMeta.RangePos start end -> do
+            exprInfo <- getProgramInfoExpr pos x
+            case exprInfo of
+                Just s  -> return $ Just s
+                Nothing -> getProgramInfoBodySeq pos xs
+
+-- ###################################################################### --
+-- Section: Debug functions
+-- ###################################################################### --
+
+dumpProgramErrors :: Program -> IO ()
+dumpProgramErrors program = do
+    case (length $ errors program) > 0 || (length $ warnings program) > 0 of
+        True -> do
+            putStrLn $ "Errors and warnings for " ++ (AST.source (ast program))
+            mapM_ (\x -> putStrLn $ show x) (errors program)
+            mapM_ (\x -> putStrLn $ show x) (warnings program)
+            putStrLn ""
+        False -> return ()

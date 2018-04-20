@@ -46,25 +46,27 @@ getProgramFromStdio = do
 
 testServer :: IO ()
 testServer = do
-  -- run like this: cat playground/main.enc | encorec -s stdio
+    -- run like this: cat playground/main.enc | encorec -s stdio
     program <- getProgramFromStdio
     let textDocument = TextDocument {
-          tdUri = "magic",
-          languageId = "encore",
-          tdVersion = 1,
-          contents = program
+        tdUri = "magic",
+        languageId = "encore",
+        tdVersion = 1,
+        contents = program
     }
 
+    -- Produce program and dump errors
     let lspState = addTextDocument textDocument initial
-
     newState <- produceTextDocument textDocument lspState
+    mapM_ (\x -> dumpProgramErrors $ fst x) (programs newState)
 
+    -- Do a test lookup
     case Map.lookup "magic" (programs newState) of
-      Just prog -> do
-        getProgramInfoForPos (1,6) (fst prog)
-        --putStrLn $ show (ppProgram (ast $ fst prog)) -- putStrLn $ show (ast $ fst prog)
-        --putStrLn $ show (contents (snd prog))
-      Nothing -> print "hey"
+        Just prog -> do
+            getProgramInfoForPos (6, 6) (fst prog)
+            --putStrLn $ show (ppProgram (ast $ fst prog)) -- putStrLn $ show (ast $ fst prog)
+            --putStrLn $ show (contents (snd prog))
+        Nothing -> print "hey"
 
 
 

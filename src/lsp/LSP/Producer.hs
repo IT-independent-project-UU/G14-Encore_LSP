@@ -29,6 +29,7 @@ import ModuleExpander
 import Typechecker.Environment
 import Typechecker.Prechecker(precheckProgram)
 import Typechecker.Typechecker(typecheckProgram, checkForMainClass)
+import Typechecker.Capturechecker(capturecheckProgram)
 import Typechecker.TypeError
 import Utils
 
@@ -92,8 +93,9 @@ produceAndUpdateState path dataMap = do
             -- Precheck and typecheck the table
             precheckedTable <- producerPrecheck newDataMap
             typecheckedTable <- producerTypecheck precheckedTable
+            capturecheckedTable <- producerCapturecheck typecheckedTable
 
-            let cleanedMap = cleanDataMap typecheckedTable
+            let cleanedMap = cleanDataMap capturecheckedTable
             return (magicMerger dataMap cleanedMap)
 
 cleanDataMap :: DataMap -> DataMap
@@ -180,3 +182,29 @@ producerTypecheck programTable = do
         _producerTypecheck lookupTable program = do
             (typecheckedProgram) <- (producerTypecheckProgram lookupTable program)
             return (typecheckedProgram)
+
+producerCapturecheckProgram :: (Map.Map FilePath LookupTable) -> LSPData -> IO (LSPData)
+producerCapturecheckProgram lookupTable lspData@(oldProgram, textDocument) = do
+    case capturecheckProgram lookupTable (convertToProgram lspData) of
+        (Right (_, newProgram), newWarnings) ->
+          return (Program {
+              ast = newProgram,
+              errors = [],
+              warnings = fromTCWarnings newWarnings
+          }, textDocument)
+        (Left error, newWarnings)->
+          return (Program {
+              ast = ast oldProgram,
+              errors = [fromTCError error],
+              warnings = fromTCWarnings newWarnings
+          }, textDocument)
+
+producerCapturecheck :: DataMap -> IO (DataMap)
+producerCapturecheck programTable = do
+    let lookupTable = fmap buildLookupTable (convertToProgramTable programTable)
+    mapM (_producerCapturecheck lookupTable) programTable
+    where
+        _producerCapturecheck lookupTable program = do
+            (capturecheckedProgram) <- (producerCapturecheckProgram lookupTable program)
+            return (capturecheckedProgram)    
+
