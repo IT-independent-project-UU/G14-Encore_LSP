@@ -2,6 +2,7 @@ module LSP.Data.Program (
     Program(..),
     makeBlankProgram,
     makeBlankAST,
+    getProgramInfoDescription,
     getProgramInfoForPos,
 
     dumpProgramErrors
@@ -13,11 +14,13 @@ module LSP.Data.Program (
 
 -- Standard
 import System.Exit
+import Debug.Trace
 
 -- Encore
 import qualified AST.AST as AST
 import qualified AST.Meta as ASTMeta
 import qualified Typechecker.Util as TypeUtil
+import qualified Types
 
 -- LSP
 import LSP.Data.Error
@@ -36,7 +39,7 @@ data Program = Program {
 
 {-  -}
 data ProgramInfo = ProgramInfo {
-    message     :: String
+    pInfo       :: String
 }
 
 -- ###################################################################### --
@@ -64,30 +67,30 @@ makeBlankAST path = AST.Program {
     AST.classes = []
 }
 
+getProgramInfoDescription :: ProgramInfo -> String
+getProgramInfoDescription info = (pInfo info)
+
+{-  -}
+handleSingletonPos :: (Maybe ProgramInfo)
+handleSingletonPos = (trace "#Error: cannot handle singleton pos" Nothing)
+
 {- -}
-getProgramInfoForPos :: LSP.Position -> Program -> IO ()
+getProgramInfoForPos :: LSP.Position -> Program -> (Maybe ProgramInfo)
 getProgramInfoForPos pos program = do
     -- Try to get function info
-    functionInfo <- (getProgramInfoFunction pos (AST.functions $ ast program))
+    let functionInfo = (getProgramInfoFunction pos (AST.functions $ ast program))
     case functionInfo of
-        Just s -> print $ s
-        Nothing -> do
+        Just info   -> Just info
+        Nothing     -> do
             -- Try to get class info
-            classInfo <- (getProgramInfoClass pos (AST.classes $ ast program))
+            let classInfo = (getProgramInfoClass pos (AST.classes $ ast program))
             case classInfo of
-                Just s -> print $ s
-                Nothing -> die "NO PROGRAM INFO FOUND"
-            
+                Just info   -> Just info
+                Nothing     -> Nothing
 
 {- -}
-handleSingletonPos :: IO (Maybe String)
-handleSingletonPos = do
-    die "############ BAD ################"
-    return Nothing
-
-{- -}
-getProgramInfoFunction :: LSP.Position -> [AST.Function] -> IO (Maybe String)
-getProgramInfoFunction _ [] = return (Nothing)
+getProgramInfoFunction :: LSP.Position -> [AST.Function] -> (Maybe ProgramInfo)
+getProgramInfoFunction _ [] = Nothing
 getProgramInfoFunction pos (x:xs) =
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.funmeta x)) of
@@ -98,24 +101,24 @@ getProgramInfoFunction pos (x:xs) =
                 False   -> getProgramInfoFunction pos xs
                 True    -> do
                     -- Check if pos is on paramDecl
-                    paramDeclResult <- getProgramInfoParamDecl pos (AST.hparams $ AST.funheader x)
-                    case paramDeclResult of
-                        Just s  -> return (Just s)
-                        Nothing -> do
+                    let paramDeclInfo = getProgramInfoParamDecl pos (AST.hparams $ AST.funheader x)
+                    case paramDeclInfo of
+                        Just info   -> Just info
+                        Nothing     -> do
                             -- Check if pos is in body
-                            bodyResult <- getProgramInfoExpr pos (AST.funbody x)
-                            case bodyResult of
-                                Just s  -> return (Just s)
-                                Nothing -> do
+                            let bodyInfo = getProgramInfoExpr pos False (AST.funbody x)
+                            case bodyInfo of
+                                Just info   -> Just info
+                                Nothing     -> do
                                     -- Check if pos is in local function
-                                    funResult <- getProgramInfoFunction pos (AST.funlocals x)
-                                    case funResult of
-                                        Just s  -> return $ Just s
-                                        Nothing -> return Nothing
+                                    let functionInfo = getProgramInfoFunction pos (AST.funlocals x)
+                                    case functionInfo of
+                                        Just info   -> Just info
+                                        Nothing     -> Nothing
 
 {-  -}
-getProgramInfoClass :: LSP.Position -> [AST.ClassDecl] -> IO (Maybe String)
-getProgramInfoClass _ [] = return Nothing
+getProgramInfoClass :: LSP.Position -> [AST.ClassDecl] -> (Maybe ProgramInfo)
+getProgramInfoClass _ [] = Nothing
 getProgramInfoClass pos (x:xs) = do
     -- Check if pos is singleton or range pos
     case (ASTMeta.getPos (AST.cmeta x)) of
@@ -126,24 +129,24 @@ getProgramInfoClass pos (x:xs) = do
                 False   -> getProgramInfoClass pos xs
                 True    -> do
                     -- Check if pos is in field decl
-                    fieldInfo <- getProgramInfoFieldDecl pos (AST.cfields x)
+                    let fieldInfo = getProgramInfoFieldDecl pos (AST.cfields x)
                     case fieldInfo of
-                        Just s  -> return $ Just s
-                        Nothing -> do
+                        Just info   -> Just info
+                        Nothing     -> do
                             -- Check if pos is in method decl
-                            methodInfo <- getProgramInfoMethodDecl pos (AST.cmethods x)
+                            let methodInfo = getProgramInfoMethodDecl pos (AST.cmethods x)
                             case methodInfo of
-                                Just s  -> return $ Just s
-                                Nothing -> return Nothing
+                                Just info   -> Just info
+                                Nothing     -> Nothing
 
 {-  -}
-getProgramInfoFieldDecl :: LSP.Position -> [AST.FieldDecl] -> IO (Maybe String)
-getProgramInfoFieldDecl _ [] = return Nothing
-getProgramInfoFieldDecl pos (x:xs) = return Nothing
+getProgramInfoFieldDecl :: LSP.Position -> [AST.FieldDecl] -> (Maybe ProgramInfo)
+getProgramInfoFieldDecl _ [] = Nothing
+getProgramInfoFieldDecl pos (x:xs) = Nothing
 
 {-  -}
-getProgramInfoMethodDecl :: LSP.Position -> [AST.MethodDecl] -> IO (Maybe String)
-getProgramInfoMethodDecl _ [] = return Nothing
+getProgramInfoMethodDecl :: LSP.Position -> [AST.MethodDecl] -> (Maybe ProgramInfo)
+getProgramInfoMethodDecl _ [] = Nothing
 getProgramInfoMethodDecl pos (x:xs) = do
     case AST.isImplicitMethod x of
         True    -> getProgramInfoMethodDecl pos xs
@@ -156,208 +159,197 @@ getProgramInfoMethodDecl pos (x:xs) = do
                     case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
                         False   -> getProgramInfoMethodDecl pos xs
                         True    -> do
-
-                            --putStrLn $ "In method " ++ show (AST.methodName x)
-
                             -- Check if pos is on paramDecl
-                            paramDeclResult <- getProgramInfoParamDecl pos (AST.hparams $ AST.mheader x)
-                            case paramDeclResult of
-                                Just s  -> return $ Just s
-                                Nothing -> do
+                            let paramDeclInfo = getProgramInfoParamDecl pos (AST.hparams $ AST.mheader x)
+                            case paramDeclInfo of
+                                Just info   -> Just info
+                                Nothing     -> do
                                     -- Check if pos is in body
-                                    bodyInfo <- getProgramInfoExpr pos (AST.mbody x)
+                                    let bodyInfo = getProgramInfoExpr pos False (AST.mbody x)
                                     case bodyInfo of
-                                        Just s  -> return $ Just s
-                                        Nothing -> do
+                                        Just info   -> Just info
+                                        Nothing     -> do
                                             -- Check if pos is in local function
-                                            localFunInfo <- getProgramInfoFunction pos (AST.mlocals x)
+                                            let localFunInfo = getProgramInfoFunction pos (AST.mlocals x)
                                             case localFunInfo of
-                                                Just s  -> return $ Just s
-                                                Nothing -> return Nothing
+                                                Just info   -> Just info
+                                                Nothing -> Nothing
                     
 {-  -}
-getProgramInfoParamDecl :: LSP.Position -> [AST.ParamDecl] -> IO (Maybe String)
-getProgramInfoParamDecl _ [] = return Nothing
+getProgramInfoParamDecl :: LSP.Position -> [AST.ParamDecl] -> (Maybe ProgramInfo)
+getProgramInfoParamDecl _ [] = Nothing
 getProgramInfoParamDecl pos (x:xs) =
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.pmeta x)) of
-        ASTMeta.SingletonPos _ -> handleSingletonPos
-        ASTMeta.RangePos start end -> do
+        ASTMeta.SingletonPos _      -> handleSingletonPos
+        ASTMeta.RangePos start end  -> do
             -- Check if pos is on parameter
             case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
                 False   -> getProgramInfoParamDecl pos xs
-                True    -> return $ Just $ "Hovering over parameter " ++ show (AST.pname x)
+                True    -> Just $ ProgramInfo{pInfo = "Hovering over parameter " ++ show (AST.pname x)}
 
 {- -}
-getProgramInfoExpr :: LSP.Position -> AST.Expr -> IO (Maybe String)
-getProgramInfoExpr pos expr = do
+getProgramInfoExpr :: LSP.Position -> Bool -> AST.Expr -> (Maybe ProgramInfo)
+getProgramInfoExpr pos ignorePos expr = do
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.getMeta expr)) of
-        ASTMeta.SingletonPos _ -> handleSingletonPos
-        ASTMeta.RangePos start end -> do
+        ASTMeta.SingletonPos _      -> handleSingletonPos
+        ASTMeta.RangePos start end  -> do
             case expr of
                 AST.Skip meta 
-                    -> return $ Just "Skip"
+                    -> Just $ ProgramInfo{pInfo = "Skip"}
                 AST.Break meta 
-                    -> return $ Just "Break"
+                    -> Just $ ProgramInfo{pInfo = "Break"}
                 AST.Continue meta 
-                    -> return $ Just "Continue"
+                    -> Just $ ProgramInfo{pInfo = "Continue"}
                 AST.TypedExpr meta body ty 
-                    -> return $ Just "Typed expression"
+                    -> Just $ ProgramInfo{pInfo = "Typed expression"}
                 AST.MethodCall meta tyArgs target name args 
-                    -> return $ Just $ "Method call: " ++ show name
+                    ->  -- Check if pos is in message send
+                        case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                            False   -> Nothing
+                            True    -> Just ProgramInfo{pInfo = (buildSignature (show name) False args (AST.getType expr))}
                 AST.MessageSend meta tyArgs target name args 
-                    -> do
-                    -- Check if pos is in message send
-                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
-                        True    -> return $ Just $ "In message send: " ++ show name
-                        False   -> do
-                            -- Check if pos is in target
-                            targetInfo <- getProgramInfoExpr pos target
-                            case targetInfo of
-                                Just s  -> return $ Just $ "In message send target: " ++ s
-                                Nothing -> return Nothing
+                    ->  -- Check if pos is in message send
+                        case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                            False   -> Nothing
+                            True    -> Just ProgramInfo{pInfo = (buildSignature (show name) True args (AST.getType expr))}
                 AST.Optional meta optTag 
-                    -> return $ Just "Optional"
+                    -> Just $ ProgramInfo{pInfo = "Optional"}
                 AST.ExtractorPattern meta ty name arg 
-                    -> return $ Just "ExtractorPattern"
-                AST.FunctionCall meta typeArgs name args 
-                    -> do
-                    -- Check if pos is in method
-                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
-                        True    -> return $ Just $ "Function call: " ++ show name
-                        False   -> return Nothing                        
+                    -> Just $ ProgramInfo{pInfo = "ExtractorPattern"}
+                AST.FunctionCall meta tyArgs name args 
+                    ->  -- Check if pos is in message send
+                        case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
+                            False   -> Nothing
+                            True    -> Just ProgramInfo{pInfo = (buildSignature (show name) False args (AST.getType expr))}
                 AST.FunctionAsValue meta tyArgs name 
-                    -> return $ Just "Function as value"
+                    -> Just $ ProgramInfo{pInfo = "Function as value"}
                 AST.Closure meta params maybeType body 
-                    -> return $ Just "Closure"
+                    -> Just $ ProgramInfo{pInfo = "Closure"}
                 AST.PartySeq meta par seqFun 
-                    -> return $ Just "PartySeq"
+                    -> Just $ ProgramInfo{pInfo = "PartySeq"}
                 AST.PartyPar meta parl parr 
-                    -> return $ Just "PartyPar"
-                AST.PartyReduce meta seqFun init par runassoc -> return $ Just "PartyReduce"
+                    -> Just $ ProgramInfo{pInfo = "PartyPar"}
+                AST.PartyReduce meta seqFun init par runassoc 
+                    -> Just $ ProgramInfo{pInfo = "PartyReduce"}
                 AST.Async meta body 
-                    -> return $ Just "Async"
+                    -> Just $ ProgramInfo{pInfo = "Async"}
                 AST.Return meta value 
-                    -> return $ Just "Return"
+                    -> Just $ ProgramInfo{pInfo = "Return"}
                 AST.MaybeValue meta container 
-                    -> return $ Just "MaybeValue"
+                    -> Just $ ProgramInfo{pInfo = "MaybeValue"}
                 AST.Tuple meta args 
-                    -> return $ Just "Tuple"
+                    -> Just $ ProgramInfo{pInfo = "Tuple"}
                 AST.Let meta mutability decl body 
-                    -> do
+                    ->  do
                     -- Check let body
-                    bodyInfo <- getProgramInfoExpr pos body
+                    let bodyInfo = getProgramInfoExpr pos False body
                     case bodyInfo of
-                        Just s  -> return $ Just $ "Let: " ++ s
-                        Nothing -> return Nothing
+                        Just info   -> Just info
+                        Nothing     -> Nothing
                 AST.MiniLet meta mutability decls 
-                    -> return $ Just "MiniLet"
+                    ->  Just $ ProgramInfo{pInfo = "MiniLet"}
                 AST.Seq meta eseq 
-                    -> do
-                    innerInfo <- getProgramInfoBodySeq pos eseq
+                    ->  do
+                    -- Get body info
+                    let innerInfo = getProgramInfoBodySeq pos eseq
                     case innerInfo of
-                        Just s  -> return $ Just $ "Seq: " ++ s
-                        Nothing -> return Nothing
+                        Just info   -> Just info
+                        Nothing     -> Nothing
                 AST.IfThenElse meta cond thn els 
-                    -> return $ Just "IfThenElse"
+                    -> Just $ ProgramInfo{pInfo = "IfThenElse"}
                 AST.IfThen meta cond thn 
-                    -> return $ Just "IfThen"
+                    -> Just $ ProgramInfo{pInfo = "IfThen"}
                 AST.Unless meta cond thn 
-                    -> return $ Just "Unless"
+                    -> Just $ ProgramInfo{pInfo = "Unless"}
                 AST.While meta cond body 
-                    -> return $ Just "While"
+                    -> Just $ ProgramInfo{pInfo = "While"}
                 AST.DoWhile meta cond body 
-                    -> return $ Just "DoWhile"
+                    -> Just $ ProgramInfo{pInfo = "DoWhile"}
                 AST.Repeat meta name times body 
-                    -> return $ Just "Repeat"
+                    -> Just $ ProgramInfo{pInfo = "Repeat"}
                 AST.For meta name step src body 
-                    -> return $ Just "For"
+                    -> Just $ ProgramInfo{pInfo = "For"}
                 AST.Match meta arg clauses 
-                    -> return $ Just "Match"
+                    -> Just $ ProgramInfo{pInfo = "Match"}
                 AST.Borrow meta target name body 
-                    -> return $ Just "Borrow"
+                    -> Just $ ProgramInfo{pInfo = "Borrow"}
                 AST.Get meta value 
-                    -> return $ Just "Get"
+                    -> Just $ ProgramInfo{pInfo = "Get"}
                 AST.Forward meta forwardExpr 
-                    -> return $ Just "ForwardExpr"
+                    -> Just $ ProgramInfo{pInfo = "ForwardExpr"}
                 AST.Yield meta value 
-                    -> return $ Just "Yield"
+                    -> Just $ ProgramInfo{pInfo = "Yield"}
                 AST.Eos meta 
-                    -> return $ Just "EOS"
+                    -> Just $ ProgramInfo{pInfo = "EOS"}
                 AST.IsEos meta target 
-                    -> return $ Just "IsEOS"
+                    -> Just $ ProgramInfo{pInfo = "IsEOS"}
                 AST.StreamNext meta target 
-                    -> return $ Just "StreamNext"
+                    -> Just $ ProgramInfo{pInfo = "StreamNext"}
                 AST.Await meta value 
-                    -> return $ Just "Await"
+                    -> Just $ ProgramInfo{pInfo = "Await"}
                 AST.Suspend meta 
-                    -> return $ Just "Suspend"
+                    -> Just $ ProgramInfo{pInfo = "Suspend"}
                 AST.FutureChain meta future chain 
-                    -> return $ Just "FutureChain"
+                    -> Just $ ProgramInfo{pInfo = "FutureChain"}
                 AST.FieldAccess meta target name 
-                    -> return $ Just "FieldAccess"
+                    -> Just $ ProgramInfo{pInfo = "FieldAccess"}
                 AST.ArrayAccess meta target name 
-                    -> return $ Just "ArrayAccess"
+                    -> Just $ ProgramInfo{pInfo = "ArrayAccess"}
                 AST.ArraySize meta target 
-                    -> return $ Just "ArraySize"
+                    -> Just $ ProgramInfo{pInfo = "ArraySize"}
                 AST.ArrayNew meta ty size
-                    -> return $ Just "ArrayNew"
+                    -> Just $ ProgramInfo{pInfo = "ArrayNew"}
                 AST.ArrayLiteral meta args 
-                    -> return $ Just "ArrayLiteral"
+                    -> Just $ ProgramInfo{pInfo = "ArrayLiteral"}
                 AST.Assign emeta rhs lhs 
-                    -> return $ Just "Assign"
+                    -> Just $ ProgramInfo{pInfo = "Assign"}
                 AST.VarAccess meta qname
-                    -> do
+                    ->  do
                     -- Check if pos is in var access
-                    case LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end) of
-                        False   -> return Nothing
-                        True    -> do
-                            --varResult <- TypeUtil.findVar qname
-                            return Nothing 
-                            {-case varResult of
-                                Nothing 
-                                    -> return $ Just $ "Variable access of untyped: " ++ show qname
-                                Just (name, ty) 
-                                    -> return $ Just $ "Variable access of typed: " ++ show qname-}
+                    let ty = (AST.getType expr)
+                    case (LSP.inRange pos (LSP.fromSourcePos start, LSP.fromSourcePos end)) || ignorePos of
+                        False   -> Just $ ProgramInfo{pInfo = "Somehow fucked up"}
+                        True    -> Just $ ProgramInfo{pInfo = (getTypeInfo ty)}
                 AST.TupleAccess meta target compartment 
-                    -> return $ Just "TupleAccess"
+                    -> Just $ ProgramInfo{pInfo = "TupleAccess"}
                 AST.Consume meta target 
-                    -> return $ Just "Consume"
+                    -> Just $ ProgramInfo{pInfo = "Consume"}
                 AST.Null meta
-                    -> return $ Just "Null"
+                    -> Just $ ProgramInfo{pInfo = "Null"}
                 AST.BTrue meta 
-                    -> return $ Just "True"
+                    -> Just $ ProgramInfo{pInfo = "True"}
                 AST.BFalse meta 
-                    -> return $ Just "False"
+                    -> Just $ ProgramInfo{pInfo = "False"}
                 AST.NewWithInit meta ty args 
-                    -> return $ Just "NewWithInit"
+                    -> Just $ ProgramInfo{pInfo = "NewWithInit"}
                 AST.New meta ty 
-                    -> return $ Just "New"
+                    -> Just $ ProgramInfo{pInfo = "New"}
                 AST.Print meta file args 
-                    -> return $ Just "Print"
+                    -> Just $ ProgramInfo{pInfo = "Print"}
                 AST.Exit meta args 
-                    -> return $ Just "Exit"
+                    -> Just $ ProgramInfo{pInfo = "Exit"}
                 AST.Abort meta args 
-                    -> return $ Just "Abort"
+                    -> Just $ ProgramInfo{pInfo = "Abort"}
                 AST.StringLiteral meta literal 
-                    -> return $ Just "String literal"
+                    -> Just $ ProgramInfo{pInfo = "String literal"}
                 AST.CharLiteral meta literal
-                    -> return $ Just "Char literal"
+                    -> Just $ ProgramInfo{pInfo = "Char literal"}
                 AST.RangeLiteral meta rstart rstop step 
-                    -> return $ Just "Range literal"
+                    -> Just $ ProgramInfo{pInfo = "Range literal"}
                 AST.IntLiteral meta literal 
-                    -> return $ Just "Int literal"
+                    -> Just $ ProgramInfo{pInfo = "Int literal"}
                 AST.UIntLiteral meta literal 
-                    -> return $ Just "UInt literal"
+                    -> Just $ ProgramInfo{pInfo = "UInt literal"}
                 AST.RealLiteral meta literal 
-                    -> return $ Just "Real literal"
+                    -> Just $ ProgramInfo{pInfo = "Real literal"}
                 AST.Embed meta ty embedded 
-                    -> return $ Just "Embed"
+                    -> Just $ ProgramInfo{pInfo = "Embed"}
                 AST.Unary meta op operand 
-                    -> return $ Just "Unary operation"
+                    -> Just $ ProgramInfo{pInfo = "Unary operation"}
                 AST.Binop meta op loper roper 
-                    -> return $ Just "Binary operation"
+                    -> Just $ ProgramInfo{pInfo = "Binary operation"}
 
             {-
 getProgramInfoSeq :: LSP.Position -> [AST.Expr] -> IO (Maybe String)
@@ -365,19 +357,62 @@ getProgramInfoSeqExpr _ [] = return Nothing
 getProgramInfoSeqExpr pos (x:xs) =
     case -}
 
-getProgramInfoBodySeq :: LSP.Position -> [AST.Expr] -> IO (Maybe String)
-getProgramInfoBodySeq _ [] = return Nothing
+getProgramInfoBodySeq :: LSP.Position -> [AST.Expr] -> (Maybe ProgramInfo)
+getProgramInfoBodySeq _ [] = Nothing
 getProgramInfoBodySeq pos (x:xs) =
     -- Check if singleton or range pos
     case (ASTMeta.getPos (AST.getMeta x)) of
-        ASTMeta.SingletonPos _ -> handleSingletonPos
-        ASTMeta.RangePos start end -> do
-            exprInfo <- getProgramInfoExpr pos x
+        ASTMeta.SingletonPos _      -> handleSingletonPos
+        ASTMeta.RangePos start end  -> do
+            let exprInfo = getProgramInfoExpr pos False x
             case exprInfo of
-                Just s  -> return $ Just s
-                Nothing -> getProgramInfoBodySeq pos xs
+                Just info   -> Just info
+                Nothing     -> getProgramInfoBodySeq pos xs
 
 -- ###################################################################### --
+-- Section: Type functions
+-- ###################################################################### --
+
+{-  -}
+getTypeInfo :: Types.Type -> String
+getTypeInfo ty =
+    -- Pattern-match the inner type 
+    case Types.getInnerType ty of
+        Types.Unresolved refInfo 
+            -> "Unresolved type"
+        Types.ClassType refInfo 
+            ->  case (Types.getRefInfoMode refInfo) of
+                    Nothing -> "class" ++ (Types.getId ty)
+                    Just m  -> (show m) ++ " class " ++ (Types.getId ty)
+        _   -> show ty ++ " - NO INFO FOR TYPE"
+
+
+buildSignatureParamType :: AST.Expr -> String
+buildSignatureParamType expr = show (AST.getType expr)
+
+buildSignatureParamList :: [AST.Expr] -> String
+buildSignatureParamList [] = ""
+buildSignatureParamList (x:[]) = (buildSignatureParamType x)
+buildSignatureParamList (x:xs) = 
+    (buildSignatureParamType x) ++ ", " ++ (buildSignatureParamList xs)
+
+buildSignatureReturnType :: Bool -> Types.Type -> String
+buildSignatureReturnType isMsg ret =
+    -- Check if message or standard call
+    case isMsg of
+        False   -> show ret
+        True    -> do
+            -- Get the type contained in future
+            case Types.getInnerType ret of
+                Types.FutureType resType    -> show resType
+                _                           -> "[INVALID MESSAGE RESULT]"
+
+{-  -}
+buildSignature :: String -> Bool -> [AST.Expr] -> Types.Type -> String
+buildSignature name isMsg argTypes ret = 
+    name ++ "(" ++ (buildSignatureParamList argTypes) ++ "): " ++ (buildSignatureReturnType isMsg ret)
+
+        -- ###################################################################### --
 -- Section: Debug functions
 -- ###################################################################### --
 

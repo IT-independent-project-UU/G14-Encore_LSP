@@ -63,7 +63,9 @@ testServer = do
     -- Do a test lookup
     case Map.lookup "magic" (programs newState) of
         Just prog -> do
-            getProgramInfoForPos (6, 6) (fst prog)
+            case getProgramInfoForPos (3, 6) (fst prog) of
+                Just info   -> print $ (getProgramInfoDescription info)
+                Nothing     -> print $ "No program info found"
             --putStrLn $ show (ppProgram (ast $ fst prog)) -- putStrLn $ show (ast $ fst prog)
             --putStrLn $ show (contents (snd prog))
         Nothing -> print "hey"
