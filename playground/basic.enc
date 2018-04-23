@@ -1,6 +1,6 @@
 active class Main
   def main() : unit
-    globalFunction()
+    globalFunction("Calling global function")
 
     var truth = new Truth
     truth ! tell("c++ is a nice language")
@@ -30,8 +30,8 @@ local class Foo
   end
 end
 
-fun globalFunction() : unit
-  println("calling global function")
+fun globalFunction(s: String) : unit
+  println(s)
 end
 
 active class Truth

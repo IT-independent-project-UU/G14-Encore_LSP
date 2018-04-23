@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 module Types(
              Type
+            ,InnerType(..)
+            ,Mode(..)
             ,arrowType
             ,arrowWithTypeParam
             ,isArrowType
@@ -132,6 +134,9 @@ module Types(
             ,isUnsafeSingleType
             ,makeStackbound
             ,isStackboundType
+
+            ,getInnerType
+            ,getRefInfoMode
             ) where
 
 import Identifiers
@@ -220,6 +225,9 @@ data RefInfo = RefInfo{refId         :: String
                       ,refNamespace  :: Maybe Namespace
                       ,refSourceFile :: Maybe FilePath
                       }
+
+getRefInfoMode :: RefInfo -> Maybe Mode
+getRefInfoMode info = (mode info)
 
 -- The current modes are irrelevant for equality checks
 instance Eq RefInfo where
@@ -333,6 +341,9 @@ data InnerType =
         | NullType
         | BottomType
           deriving(Eq)
+
+getInnerType :: Type -> InnerType
+getInnerType t@Type{inner} = inner
 
 applyInner f ty@Type{inner} = ty{inner = f inner}
 applyInnerRefInfo f ty@Type{inner}
