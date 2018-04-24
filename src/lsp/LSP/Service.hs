@@ -48,11 +48,8 @@ startServer STDIO = do
     testServer
     return ()
 
-    contents <- getContents
-    let responseStream = handleClient contents
-
     hSetBuffering stdout NoBuffering
-    hPutStr stdout responseStream
+    handleClient stdin stdout
 
 startServer (TCPServer port) = do
     sock <- listenOn $ PortNumber $ fromInteger port
@@ -61,17 +58,13 @@ startServer (TCPServer port) = do
         (client, addr, _) <- accept sock
         putStrLn $ "connection from " ++ (show addr)
 
-        forkIO $ do contents <- hGetContents client
-                    let responseStream = handleClient contents
-                    hPutStr client responseStream
+        forkIO $ do hSetBuffering client NoBuffering
+                    handleClient client client
 
 startServer (TCPClient host port) = do
     putStrLn $ "connecting to " ++ (show host) ++ " :" ++ (show port)
 
     sock <- connectTo host $ PortNumber $ fromInteger port
 
-    contents <- hGetContents sock
-    let responseStream = handleClient contents
-
     hSetBuffering sock NoBuffering
-    hPutStr sock responseStream
+    handleClient sock sock
