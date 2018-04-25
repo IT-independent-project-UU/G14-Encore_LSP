@@ -1,5 +1,6 @@
 module LSP.Data.Error (
-  Error,
+  Error(..),
+  ErrorType(..),
   fromTCError,
   fromTCErrors,
   fromTCWarning,
