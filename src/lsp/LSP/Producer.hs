@@ -65,7 +65,7 @@ produceAndUpdateState path dataMap = do
     case Map.lookup path dataMap of
       Nothing -> return (dataMap)
       Just (program, textDocument) -> do
-        let source = contents textDocument
+        let source = tdContents textDocument
         -- Parse program to produce AST
         (_ast, error) <- case parseEncoreProgram path source of
           Right ast   -> return (ast, Nothing)
