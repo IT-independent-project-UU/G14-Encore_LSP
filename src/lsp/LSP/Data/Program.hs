@@ -1,5 +1,6 @@
 module LSP.Data.Program (
     Program(..),
+    ProgramInfo(..),
     makeBlankProgram,
     makeBlankAST,
     getProgramInfoDescription,

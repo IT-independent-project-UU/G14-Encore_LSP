@@ -12,7 +12,7 @@ import Data.Aeson
 -- Section: Data
 -- ###################################################################### --
 data TextDocumentPositionParams = TextDocumentPositionParams {
-    textDocumentIdentifier :: String,
+    uri :: String,
     position :: Position
 }
 
@@ -34,7 +34,7 @@ instance FromJSON TextDocumentPositionParams where
         character       <- position .: "character"
 
         return TextDocumentPositionParams {
-            textDocumentIdentifier = uri,
+            uri = uri,
             position = (line, character)
         }
 
