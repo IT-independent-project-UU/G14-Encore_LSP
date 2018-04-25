@@ -2,8 +2,9 @@
 
 module LSP.Data.TextDocument (
     TextDocument(..),
+    TextDocumentClose(..),
     TextDocumentChange(..),
-    TextDocumentIdentifier(..),
+    TextDocumentIdent(..),
     uri,
     version,
     applyTextDocumentChange,
@@ -27,41 +28,51 @@ import LSP.Data.Position
 
 data TextDocument = TextDocument {
     tdUri :: String,
-    languageId :: String,
     tdVersion :: Int,
-    contents :: String
+    tdLanguageId :: String,
+    tdContents :: String
+} deriving (Show)
+
+data TextDocumentClose = TextDocumentClose {
+    tdclIdentifier :: TextDocumentIdent
 } deriving (Show)
 
 data TextDocumentChange = TextDocumentChange {
-    tdcUri :: String,
-    tdcVersion :: Int,
-    changes :: [TextDocumentContentChange]
+    tdcIdentifier :: TextDocumentIdentVersion,
+    tdcChanges :: [TextDocumentContentChange]
 } deriving (Show)
 
-data TextDocumentIdentifier = TextDocumentIdentifier {
+data TextDocumentIdent = TextDocumentIdent {
     tdiUri :: String
 } deriving (Show)
 
+data TextDocumentIdentVersion = TextDocumentIdentVersion {
+    tdivUri :: String,
+    tdivVersion :: Int
+} deriving (Show)
+
 data TextDocumentContentChange = TextDocumentContentChange {
-    range :: Range,
-    rangeLength :: Int,
-    text :: String
+    tdccRange :: Range,
+    tdccRangeLength :: Int,
+    tdccText :: String
 } deriving (Show)
 
 -- ###################################################################### --
 -- Section: Functions
 -- ###################################################################### --
 
-applyTextDocumentChange :: TextDocumentContentChange -> TextDocument -> TextDocument
-applyTextDocumentChange textDocumentChange textDocument
-    = TextDocument {
-        tdUri      = uri textDocument,
-        languageId = languageId textDocument,
-        tdVersion  = version textDocument,
-        contents   = applyTextChange (range textDocumentChange)
-                                     (text textDocumentChange)
-                                     (contents textDocument)
-    }
+applyTextDocumentChange :: TextDocumentChange -> TextDocument -> TextDocument
+applyTextDocumentChange textDocumentChange textDocument =
+    foldr (\change textDocument ->
+            TextDocument {
+                tdUri        = tdUri textDocument,
+                tdVersion    = tdivVersion $ tdcIdentifier textDocumentChange,
+                tdLanguageId = tdLanguageId textDocument,
+                tdContents   = applyTextChange (tdccRange change)
+                                               (tdccText change)
+                                               (tdContents textDocument)
+            }
+        ) textDocument $ tdcChanges textDocumentChange
 
 applyTextChange :: Range -> String -> String -> String
 applyTextChange _ replacement "" = replacement
@@ -78,9 +89,9 @@ applyTextChange ((startLine, startChar), (endLine, endChar))
 makeBlankTextDocument :: String -> TextDocument
 makeBlankTextDocument name = TextDocument{
     tdUri      = name,
-    languageId = "encore",
     tdVersion  = 1,
-    contents   = ""
+    tdLanguageId = "encore",
+    tdContents   = ""
 }
 
 -- ###################################################################### --
@@ -98,36 +109,48 @@ instance TextDocumentVersion TextDocument where
     version = tdVersion
 
 instance TextDocumentURI TextDocumentChange where
-    uri = tdcUri
+    uri = uri . tdcIdentifier
 instance TextDocumentVersion TextDocumentChange where
-    version = tdcVersion
+    version = version . tdcIdentifier
+
+instance TextDocumentURI TextDocumentIdent where
+    uri = tdiUri
+
+instance TextDocumentURI TextDocumentIdentVersion where
+    uri = tdivUri
+instance TextDocumentVersion TextDocumentIdentVersion where
+    version = tdivVersion
 
 instance FromJSON TextDocument where
     parseJSON = withObject "params" $ \o -> do
         document <- o .: "textDocument"
         uri      <- document .: "uri"
-        id       <- document .: "languageId"
         version  <- document .: "version"
+        id       <- document .: "languageId"
         text     <- document .: "text"
         return TextDocument {
             tdUri = uri,
-            languageId = id,
             tdVersion = version,
-            contents = text
+            tdLanguageId = id,
+            tdContents = text
+        }
+
+instance FromJSON TextDocumentClose where
+    parseJSON = withObject "params" $ \o -> do
+        identifier <- o .: "textDocument"
+
+        return TextDocumentClose {
+            tdclIdentifier = identifier
         }
 
 instance FromJSON TextDocumentChange where
     parseJSON = withObject "params" $ \o -> do
         identifier  <- o .: "textDocument"
-        uri         <- identifier .: "uri"
-        version     <- identifier .: "version"
-
         changes     <- o .: "contentChanges"
 
         return TextDocumentChange {
-            tdcUri = uri,
-            tdcVersion = version,
-            changes = changes
+            tdcIdentifier = identifier,
+            tdcChanges = changes
         }
 
 instance FromJSON TextDocumentContentChange where
@@ -143,14 +166,23 @@ instance FromJSON TextDocumentContentChange where
         text        <- o .: "text"
 
         return TextDocumentContentChange {
-            range = ((startLine, startChar), (endLine, endChar)),
-            rangeLength = rangeLength,
-            text = text
+            tdccRange = ((startLine, startChar), (endLine, endChar)),
+            tdccRangeLength = rangeLength,
+            tdccText = text
         }
 
-instance FromJSON TextDocumentIdentifier where
+instance FromJSON TextDocumentIdent where
     parseJSON = withObject "textDocumentIdentifier" $ \o -> do
         uri <- o .: "uri"
-        return TextDocumentIdentifier {
+        return TextDocumentIdent {
             tdiUri = uri
+        }
+
+instance FromJSON TextDocumentIdentVersion where
+    parseJSON = withObject "textDocumentIdentifier" $ \o -> do
+        uri <- o .: "uri"
+        version <- o .: "version"
+        return TextDocumentIdentVersion {
+            tdivUri = uri,
+            tdivVersion = version
         }
