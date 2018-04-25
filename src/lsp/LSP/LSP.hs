@@ -49,24 +49,24 @@ handleClient :: Handle -> Handle -> IO ()
 handleClient input output =
     do inputStream <- hGetContents input
        let (requests, e) = decodeMessageStream inputStream
-       let responses = map (fmap fst) $ sequenceWithState handleRequest requests (return State.initial)
+       let responses = map (fmap fst) $ sequenceStateM handleRequest requests (return State.initial)
        sequence_ $ map (\a -> do
            messages <- a
            hPutStr output $ encodeMessageString messages) responses
        return ()
 
 handleRequest :: Either String JSONRPC.ClientMessage ->
-                 LSPState ->
-                 IO ([ServerMessage], LSPState)
-handleRequest (Left e) state
-    = return ([
+                 StateM LSPState IO [ServerMessage]
+handleRequest (Left e)
+    = return [
               JSONRPC.ErrorResponse {
                   seMsgID = Nothing,
                   seError = JSONRPC.Error JSONRPC.parseError e Nothing
               }
-          ], state)
-handleRequest (Right (Request msgID "initialize" params)) state
-    = return ([
+          ]
+
+handleRequest (Right (Request msgID "initialize" params))
+    = return [
               ServerNotification {
                   snMethod = "window/showMessage",
                   snParams = Just $ object [
@@ -84,36 +84,39 @@ handleRequest (Right (Request msgID "initialize" params)) state
                       ])
                   ]
               }
-          ], state)
+          ]
 
-handleRequest (Right (ClientNotification "textDocument/didOpen" params)) state
+handleRequest (Right (ClientNotification "textDocument/didOpen" params))
     = case Just fromJSON <*> params of
-          Just (Success document) -> return ([], State.addTextDocument document state)
+          Just (Success document) ->
+              do modify $ State.addTextDocument document
+                 return []
           Just (Aeson.Error err) ->
-              return ([
+              return [
                       showMessage MessageError "Client notification textDocument/didOpen has bad params"
-                  ], state)
+                  ]
           Nothing ->
-              return ([
+              return [
                       showMessage MessageError "Client notification textDocument/didOpen is missing params"
-                  ], state)
+                  ]
 
-handleRequest (Right (ClientNotification "textDocument/didChange" params)) state
+handleRequest (Right (ClientNotification "textDocument/didChange" params))
     = case Just fromJSON <*> params of
           Just (Success documentChange) ->
-              do let newState = State.changeTextDocument documentChange state
-                 return ([
+              do modify $ State.changeTextDocument documentChange
+                 newState <- get
+                 return [
                          showMessage MessageLog ("State: " ++ show newState)
-                     ], newState)
+                     ]
           Just (Aeson.Error err) ->
-              return ([
+              return [
                       showMessage MessageError "Client notification textDocument/didChange has bad params",
                       showMessage MessageLog ("Err " ++ (show err))
-                  ], state)
+                  ]
           Nothing ->
-              return ([
+              return [
                       showMessage MessageError "Client notification textDocument/didChange is missing params"
-                  ], state)
+                  ]
 
 handleRequest (Right (Request msgID "textDocument/hover" params)) state
     = case Just fromJSON <*> params of
@@ -136,18 +139,18 @@ handleRequest (Right (Request msgID "textDocument/hover" params)) state
               return  ([], state)
 
 handleRequest (Right (ClientNotification method params)) state
-    = return ([
+    = return [
               showMessage MessageInfo $ "Unknown notification from client: " ++ (show method)
-          ], state)
+          ]
 
-handleRequest (Right (Request msgID method params)) state
-    = return ([
+handleRequest (Right (Request msgID method params))
+    = return [
               showMessage MessageError $ "Unknown request from client: " ++ (show method),
               ErrorResponse {
                   seMsgID = Just msgID,
                   seError = JSONRPC.Error JSONRPC.methodNotFound "method not found" Nothing
               }
-          ], state)
+          ]
 
 data ServerMessageLevel = MessageError |
                           MessageWarning |
