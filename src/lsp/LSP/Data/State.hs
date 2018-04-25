@@ -1,6 +1,7 @@
 module LSP.Data.State (
     LSPState(..),
     initial,
+    lookupTextDocument,
     addTextDocument,
     closeTextDocument,
     changeTextDocument,
@@ -38,6 +39,12 @@ initial :: LSPState
 initial = LSPState {
     programs = Map.empty
 }
+
+lookupTextDocument :: String -> LSPState -> Maybe (TextDocument)
+lookupTextDocument uri state =
+  case Map.lookup uri (programs state) of
+    Just res -> Just $ snd res
+    Nothing -> Nothing
 
 addTextDocument :: TextDocument -> LSPState -> LSPState
 addTextDocument newDocument (LSPState programs) =
