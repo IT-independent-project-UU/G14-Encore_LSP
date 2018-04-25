@@ -3,6 +3,7 @@
 module LSP.Data.TextDocument (
     TextDocument(..),
     TextDocumentChange(..),
+    TextDocumentIdentifier(..),
     uri,
     version,
     applyTextDocumentChange,
@@ -37,6 +38,10 @@ data TextDocumentChange = TextDocumentChange {
     changes :: [TextDocumentContentChange]
 }
 
+newtype TextDocumentIdentifier = TextDocumentIdentifier {
+    tdiUri :: String
+}
+
 data TextDocumentContentChange = TextDocumentContentChange {
     range :: Range,
     rangeLength :: Int,
@@ -59,6 +64,7 @@ applyTextDocumentChange textDocumentChange textDocument
     }
 
 applyTextChange :: Range -> String -> String -> String
+applyTextChange _ replacement "" = replacement
 applyTextChange ((startLine, startChar), (endLine, endChar))
                 replacement
                 text
@@ -140,4 +146,11 @@ instance FromJSON TextDocumentContentChange where
             range = ((startLine, startChar), (endLine, endChar)),
             rangeLength = rangeLength,
             text = text
+        }
+
+instance FromJSON TextDocumentIdentifier where
+    parseJSON = withObject "textDocumentIdentifier" $ \o -> do
+        uri <- o .: "uri"
+        return TextDocumentIdentifier {
+            tdiUri = uri
         }

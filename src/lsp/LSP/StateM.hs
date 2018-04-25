@@ -8,10 +8,18 @@ module LSP.StateM (
     get,
     put,
     modify,
+    lift,
+    modifyM,
     sequenceStateM
 ) where
 
-import Control.Monad.State (MonadState, get, put, modify, state)
+import Control.Monad.State (
+    MonadState,
+    MonadTrans(lift),
+    get,
+    put,
+    modify,
+    state)
 
 newtype StateM s (m :: * -> *) a = StateM {
     runStateM :: s -> m (a, s)
@@ -20,10 +28,13 @@ newtype StateM s (m :: * -> *) a = StateM {
 stateM :: Monad m => (s -> m (a, s)) -> StateM s m a
 stateM = StateM
 
+modifyM :: Monad m => (s -> m s) -> StateM s m ()
+modifyM f = stateM (\s -> fmap ((,) ()) $ f s)
+
 sequenceStateM :: Monad m => (a -> StateM s m b) -> [a] -> m s -> [m (b, s)]
 sequenceStateM _ [] _ = []
 sequenceStateM f (a:bs) s =
-    this : sequenceStateM f bs (this >>= (return . snd))
+    this : sequenceStateM f bs (fmap snd this)
     where this = s >>= (\s -> runStateM (f a) s)
 
 instance Monad m => Monad (StateM s m) where
@@ -46,3 +57,7 @@ instance Monad m => Functor (StateM s m) where
 instance Monad m => MonadState s (StateM s m) where
     get = stateM (\s -> return (s, s))
     put s = stateM (\_ -> return ((), s))
+
+instance MonadTrans (StateM s) where
+    lift f = stateM (\s -> do a <- f
+                              return (a, s))
