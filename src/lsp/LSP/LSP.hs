@@ -21,7 +21,8 @@ import qualified LSP.Base as Base
 import LSP.JSONRPC as JSONRPC
 import LSP.Data.State as State
 import LSP.Data.TextDocument as TextDocument
-import LSP.Data.Hover as Hover
+import LSP.Data.Hover (Hover(..))
+import qualified LSP.Data.Hover as Hover
 import LSP.Data.Program as Program
 import LSP.Producer (produceAndUpdateState)
 
@@ -104,7 +105,7 @@ handleRequest (Right (ClientNotification "textDocument/didClose" params))
     = case fmap fromJSON params of
           Just (Success documentIdent) ->
               do lift $ putStrLn $ "close " ++ (show documentIdent)
-                 modify $ State.closeTextDocument documentIdent
+                 modify $ State.closeTextDocument (tdclIdentifier documentIdent)
                  return []
           Just (Aeson.Error err) -> return []
           Nothing -> return []
@@ -113,7 +114,8 @@ handleRequest (Right (ClientNotification "textDocument/didChange" params))
     = case fmap fromJSON params of
           Just (Success documentChange) ->
               do modify $ State.changeTextDocument documentChange
-                 modifyM $ State.compileDocument (tdcUri documentChange)
+                 modifyM $ State.compileDocument (uri documentChange)
+                 program <- fmap (getProgram $ uri documentChange) get
                  return []
           Just (Aeson.Error err) -> return []
           Nothing -> return []
@@ -137,7 +139,7 @@ handleRequest (Right (Request msgID "textDocument/hover" params))
                                     srMsgID = msgID,
                                     srResult = toJSON $ Hover {
                                         Hover.contents = pDesc info,
-                                        range = pRange info
+                                        Hover.range = pRange info
                                     }
                                 }
                             ]
@@ -157,6 +159,8 @@ handleRequest (Right (Request msgID method params))
                   seError = JSONRPC.Error JSONRPC.methodNotFound "method not found" Nothing
               }
           ]
+
+
 
 data ServerMessageLevel = MessageError |
                           MessageWarning |
