@@ -19,8 +19,10 @@ import System.IO
 import qualified LSP.Base as Base
 import LSP.JSONRPC as JSONRPC
 import LSP.Data.State as State
-import LSP.Data.TextDocument
 import LSP.StateM
+import LSP.Data.TextDocument as TextDocument
+import LSP.Data.Hover as Hover
+import LSP.Producer (produceAndUpdateState)
 
 -- ###################################################################### --
 -- Section: Functions
@@ -77,7 +79,8 @@ handleRequest (Right (Request msgID "initialize" params))
                   srMsgID  = msgID,
                   srResult = object [
                       ("capabilities", object [
-                          ("textDocumentSync", Number 2) -- Incremental
+                          ("textDocumentSync", Number 2), -- Incremental
+                          ("hoverProvider", Bool True)
                       ])
                   ]
               }
@@ -114,6 +117,26 @@ handleRequest (Right (ClientNotification "textDocument/didChange" params))
               return [
                       showMessage MessageError "Client notification textDocument/didChange is missing params"
                   ]
+
+handleRequest (Right (Request msgID "textDocument/hover" params))
+    = case Just fromJSON <*> params of
+          Just (Success posParams) ->
+               return [
+                       Response {
+                           srMsgID = msgID,
+                           srResult = toJSON $ Hover {
+                               Hover.contents = "Test",
+                               range = (position posParams, position posParams)
+                           }
+                       }
+                   ]
+          Just (Aeson.Error err) ->
+              return [
+                      showMessage MessageError "Hover - Error ",
+                      showMessage MessageError (show err)
+                  ]
+          Nothing ->
+              return []
 
 handleRequest (Right (ClientNotification method params))
     = return [
