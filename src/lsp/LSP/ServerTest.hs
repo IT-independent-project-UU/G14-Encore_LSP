@@ -50,9 +50,9 @@ testServer = do
     program <- getProgramFromStdio
     let textDocument = TextDocument {
         tdUri = "magic",
-        languageId = "encore",
         tdVersion = 1,
-        contents = program
+        tdLanguageId = "encore",
+        tdContents = program
     }
 
     -- Produce program and dump errors
