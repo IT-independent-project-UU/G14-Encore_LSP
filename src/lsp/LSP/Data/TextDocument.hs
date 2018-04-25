@@ -36,17 +36,17 @@ data TextDocumentChange = TextDocumentChange {
     tdcUri :: String,
     tdcVersion :: Int,
     changes :: [TextDocumentContentChange]
-}
+} deriving (Show)
 
-newtype TextDocumentIdentifier = TextDocumentIdentifier {
+data TextDocumentIdentifier = TextDocumentIdentifier {
     tdiUri :: String
-}
+} deriving (Show)
 
 data TextDocumentContentChange = TextDocumentContentChange {
     range :: Range,
     rangeLength :: Int,
     text :: String
-}
+} deriving (Show)
 
 -- ###################################################################### --
 -- Section: Functions

@@ -14,6 +14,7 @@ import Data.Aeson as Aeson
 import Data.Aeson.Types
 import Data.Text (pack)
 import System.IO
+import Control.Monad.State
 
 -- LSP
 import qualified LSP.Base as Base
@@ -35,8 +36,8 @@ decodeMessageStream input =
         requests       = concat $ map (either ((:[]) .Left) (map Right)) requestBatches
     in  (requests, e)
 
-encodeMessageString :: [JSONRPC.ServerMessage] -> String
-encodeMessageString responses =
+encodeMessageStream :: [JSONRPC.ServerMessage] -> String
+encodeMessageStream responses =
     let responseMessages = map (Base.LSPPacket [] . JSONRPC.encodeMessage) responses
     in  concat $ map Base.encodeMessage responseMessages
 
@@ -44,14 +45,23 @@ handleClient :: Handle -> Handle -> IO ()
 handleClient input output =
     do inputStream <- hGetContents input
        let (requests, e) = decodeMessageStream inputStream
-       let responses = map (fmap fst) $ sequenceStateM handleRequest requests (return State.initial)
-       sequence_ $ map (\a -> do
-           messages <- a
-           hPutStr output $ encodeMessageString messages) responses
+       sendResponses output State.initial $ map handleRequest requests
        return ()
 
+sendResponses :: Handle -> LSPState -> [StateT LSPState IO [ServerMessage]] -> IO ()
+sendResponses _ _ [] = return ()
+sendResponses output state (a:bs) =
+    do (responses, nextState) <- runStateT a state
+       hPutStr output $ encodeMessageStream responses
+       sendResponses output nextState bs
+
+modifyM :: (Monad m, MonadTrans t, MonadState s (t m)) => (s -> m s) -> t m ()
+modifyM f = do s <- get
+               s <- lift $ f s
+               put s
+
 handleRequest :: Either String JSONRPC.ClientMessage ->
-                 StateM LSPState IO [ServerMessage]
+                 StateT LSPState IO [ServerMessage]
 handleRequest (Left e)
     = return [
               JSONRPC.ErrorResponse {
@@ -61,7 +71,7 @@ handleRequest (Left e)
           ]
 
 handleRequest (Right (Request msgID "initialize" params))
-    = return [
+    = (lift $ putStrLn "init") >> return [
               ServerNotification {
                   snMethod = "window/showMessage",
                   snParams = Just $ object [
@@ -84,7 +94,8 @@ handleRequest (Right (Request msgID "initialize" params))
 handleRequest (Right (ClientNotification "textDocument/didOpen" params))
     = case fmap fromJSON params of
           Just (Success document) ->
-              do modify $ State.addTextDocument document
+              do lift $ putStrLn $ "open " ++ (show document)
+                 modify $ State.addTextDocument document
                  modifyM $ State.compileDocument (tdUri document)
                  return []
           Just (Aeson.Error err) -> return []
@@ -93,7 +104,8 @@ handleRequest (Right (ClientNotification "textDocument/didOpen" params))
 handleRequest (Right (ClientNotification "textDocument/didClose" params))
     = case fmap fromJSON params of
           Just (Success documentIdent) ->
-              do modify $ State.closeTextDocument documentIdent
+              do lift $ putStrLn $ "close " ++ (show documentIdent)
+                 modify $ State.closeTextDocument documentIdent
                  return []
           Just (Aeson.Error err) -> return []
           Nothing -> return []
