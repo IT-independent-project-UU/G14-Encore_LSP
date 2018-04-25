@@ -23,6 +23,7 @@ import LSP.Data.State as State
 import LSP.Data.TextDocument as TextDocument
 import LSP.Data.Hover (Hover(..))
 import qualified LSP.Data.Hover as Hover
+import LSP.Data.Diagnostic as Diagnostic
 import LSP.Data.Program as Program
 import LSP.Producer (produceAndUpdateState)
 
@@ -117,7 +118,18 @@ handleRequest (Right (ClientNotification "textDocument/didChange" params))
               do modify $ State.changeTextDocument documentChange
                  modifyM $ State.compileDocument (uri documentChange)
                  program <- fmap (getProgram $ uri documentChange) get
-                 return []
+                 case program of
+                     Just p ->
+                         return [
+                                 ServerNotification {
+                                         snMethod = "textDocument/publishDiagnostics",
+                                         snParams = Just $ toJSON $ PublishDiagnosticsParams {
+                                                 pdpUri = uri documentChange,
+                                                 pdpDiagnostics = map errorToDiagnostic $ errors p
+                                             }
+                                     }
+                             ]
+                     Nothing -> return []
           Just (Aeson.Error err) -> return []
           Nothing -> return []
 
