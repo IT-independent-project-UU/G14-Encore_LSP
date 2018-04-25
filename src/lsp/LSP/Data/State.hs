@@ -43,8 +43,8 @@ addTextDocument :: TextDocument -> LSPState -> LSPState
 addTextDocument newDocument (LSPState programs) =
     LSPState (Map.insert (uri newDocument) (makeBlankProgram (uri newDocument), newDocument) programs)
 
-closeTextDocument :: TextDocumentIdentifier -> LSPState -> LSPState
-closeTextDocument ident = LSPState . Map.delete (tdiUri ident) . programs
+closeTextDocument :: TextDocumentIdent -> LSPState -> LSPState
+closeTextDocument ident = LSPState . Map.delete (uri ident) . programs
 
 changeTextDocument :: TextDocumentChange -> LSPState -> LSPState
 changeTextDocument documentChange state@(LSPState programs) =
@@ -52,7 +52,7 @@ changeTextDocument documentChange state@(LSPState programs) =
         Nothing -> state
         Just (program, textDocument) ->
             LSPState $ Map.insert (uri documentChange)
-                                  (program, (foldr applyTextDocumentChange textDocument (changes documentChange)))
+                                  (program, applyTextDocumentChange documentChange textDocument)
                                   programs
 
 produceTextDocument :: TextDocument -> LSPState -> IO (LSPState)
