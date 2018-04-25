@@ -22,6 +22,7 @@ import LSP.Data.State as State
 import LSP.StateM
 import LSP.Data.TextDocument as TextDocument
 import LSP.Data.Hover as Hover
+import LSP.Data.Program as Program
 import LSP.Producer (produceAndUpdateState)
 
 -- ###################################################################### --
@@ -39,12 +40,6 @@ encodeMessageString :: [JSONRPC.ServerMessage] -> String
 encodeMessageString responses =
     let responseMessages = map (Base.LSPPacket [] . JSONRPC.encodeMessage) responses
     in  concat $ map Base.encodeMessage responseMessages
-
-sequenceWithState :: (a -> s -> IO (b, s)) -> [a] -> IO s -> [IO (b, s)]
-sequenceWithState f [] _ = []
-sequenceWithState f (a:bs) s =
-    this : sequenceWithState f bs (this >>= (return . snd))
-    where this = s >>= (\s -> f a s)
 
 handleClient :: Handle -> Handle -> IO ()
 handleClient input output =
@@ -87,56 +82,56 @@ handleRequest (Right (Request msgID "initialize" params))
           ]
 
 handleRequest (Right (ClientNotification "textDocument/didOpen" params))
-    = case Just fromJSON <*> params of
+    = case fmap fromJSON params of
           Just (Success document) ->
               do modify $ State.addTextDocument document
+                 modifyM $ State.compileDocument (tdUri document)
                  return []
-          Just (Aeson.Error err) ->
-              return [
-                      showMessage MessageError "Client notification textDocument/didOpen has bad params"
-                  ]
-          Nothing ->
-              return [
-                      showMessage MessageError "Client notification textDocument/didOpen is missing params"
-                  ]
+          Just (Aeson.Error err) -> return []
+          Nothing -> return []
+
+handleRequest (Right (ClientNotification "textDocument/didClose" params))
+    = case fmap fromJSON params of
+          Just (Success documentIdent) ->
+              do modify $ State.closeTextDocument documentIdent
+                 return []
+          Just (Aeson.Error err) -> return []
+          Nothing -> return []
 
 handleRequest (Right (ClientNotification "textDocument/didChange" params))
-    = case Just fromJSON <*> params of
+    = case fmap fromJSON params of
           Just (Success documentChange) ->
               do modify $ State.changeTextDocument documentChange
-                 newState <- get
-                 return [
-                         showMessage MessageLog ("State: " ++ show newState)
-                     ]
-          Just (Aeson.Error err) ->
-              return [
-                      showMessage MessageError "Client notification textDocument/didChange has bad params",
-                      showMessage MessageLog ("Err " ++ (show err))
-                  ]
-          Nothing ->
-              return [
-                      showMessage MessageError "Client notification textDocument/didChange is missing params"
-                  ]
+                 modifyM $ State.compileDocument (tdcUri documentChange)
+                 return []
+          Just (Aeson.Error err) -> return []
+          Nothing -> return []
 
 handleRequest (Right (Request msgID "textDocument/hover" params))
-    = case Just fromJSON <*> params of
+    = case fmap fromJSON params of
           Just (Success posParams) ->
-               return [
-                       Response {
-                           srMsgID = msgID,
-                           srResult = toJSON $ Hover {
-                               Hover.contents = "Test",
-                               range = (position posParams, position posParams)
-                           }
-                       }
-                   ]
-          Just (Aeson.Error err) ->
-              return [
-                      showMessage MessageError "Hover - Error ",
-                      showMessage MessageError (show err)
-                  ]
-          Nothing ->
-              return []
+              do state <- get
+                 case State.getProgram (Hover.uri posParams) state >>=
+                          getProgramInfoForPos (Hover.position posParams) of
+                     Nothing ->
+                        return [
+                                Response {
+                                    srMsgID = msgID,
+                                    srResult = Null
+                                }
+                            ]
+                     Just info ->
+                         return [
+                                Response {
+                                    srMsgID = msgID,
+                                    srResult = toJSON $ Hover {
+                                        Hover.contents = pDesc info,
+                                        range = pRange info
+                                    }
+                                }
+                            ]
+          Just (Aeson.Error err) -> return []
+          Nothing -> return []
 
 handleRequest (Right (ClientNotification method params))
     = return [
