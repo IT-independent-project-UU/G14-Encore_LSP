@@ -12,7 +12,7 @@ import Data.Aeson
 -- Section: Data
 -- ###################################################################### --
 data TextDocumentPositionParams = TextDocumentPositionParams {
-    uri :: String,
+    textDocumentIdentifier :: String,
     position :: Position
 }
 
@@ -34,8 +34,8 @@ instance FromJSON TextDocumentPositionParams where
         character       <- position .: "character"
 
         return TextDocumentPositionParams {
-            uri = uri,
-            position = (line + 1, character + 1)
+            textDocumentIdentifier = uri,
+            position = (line, character)
         }
 
 instance ToJSON Hover where
@@ -44,12 +44,12 @@ instance ToJSON Hover where
             "contents" .= contents hover,
             "range"    .= object [
                 "start" .= object [
-                    "line"      .= ((fst $ fst $ range hover) - 1),
-                    "character" .= ((snd $ fst $ range hover) - 1)
+                    "line"      .= (fst $ fst $ range hover),
+                    "character" .= (snd $ fst $ range hover)
                 ],
                 "end"   .= object [
-                    "line"      .= ((fst $ snd $ range hover) - 1),
-                    "character" .= ((snd $ snd $ range hover) - 1)
+                    "line"      .= (fst $ snd $ range hover),
+                    "character" .= (snd $ snd $ range hover)
                 ]
             ]
         ]
