@@ -35,7 +35,7 @@ instance FromJSON TextDocumentPositionParams where
 
         return TextDocumentPositionParams {
             uri = uri,
-            position = (line, character)
+            position = (line + 1, character + 1)
         }
 
 instance ToJSON Hover where
@@ -44,12 +44,12 @@ instance ToJSON Hover where
             "contents" .= contents hover,
             "range"    .= object [
                 "start" .= object [
-                    "line"      .= (fst $ fst $ range hover),
-                    "character" .= (snd $ fst $ range hover)
+                    "line"      .= ((fst $ fst $ range hover) - 1),
+                    "character" .= ((snd $ fst $ range hover) - 1)
                 ],
                 "end"   .= object [
-                    "line"      .= (fst $ snd $ range hover),
-                    "character" .= (snd $ snd $ range hover)
+                    "line"      .= ((fst $ snd $ range hover) - 1),
+                    "character" .= ((snd $ snd $ range hover) - 1)
                 ]
             ]
         ]
