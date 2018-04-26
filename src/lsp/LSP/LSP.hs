@@ -15,6 +15,7 @@ import Data.Aeson.Types
 import Data.Text (pack)
 import System.IO
 import Control.Monad.State
+import Debug.Trace as Debug
 
 -- LSP
 import qualified LSP.Base as Base
@@ -116,6 +117,7 @@ handleRequest (Right (ClientNotification "textDocument/didChange" params))
           Just (Success documentChange) ->
               do modify $ State.changeTextDocument documentChange
                  modifyM $ State.compileDocument (uri documentChange)
+
                  program <- fmap (getProgram $ uri documentChange) get
                  case program of
                      Just p ->
@@ -137,18 +139,18 @@ handleRequest (Right (Request msgID "textDocument/hover" params))
           Just (Success posParams) ->
               do state <- get
                  case State.getProgram (Hover.uri posParams) state >>=
-                          getProgramInfoForPos (Hover.position posParams) of
+                          getProgramInfoForPos (Debug.trace ("hover pos: " ++ show (Hover.position posParams)) (Hover.position posParams)) of
                      Nothing ->
                         return [
                                 Response {
-                                    srMsgID = msgID,
+                                    srMsgID = Debug.trace "hover nothing: " msgID,
                                     srResult = Null
                                 }
                             ]
                      Just info ->
                          return [
                                 Response {
-                                    srMsgID = msgID,
+                                    srMsgID = Debug.trace "hover just: " msgID,
                                     srResult = toJSON $ Hover {
                                         Hover.contents = pDesc info,
                                         Hover.range = pRange info

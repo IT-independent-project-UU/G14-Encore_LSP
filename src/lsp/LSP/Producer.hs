@@ -19,6 +19,7 @@ import System.Exit
 import qualified Data.Map.Strict as Map
 import Control.Monad
 import Data.List
+import Debug.Trace as Debug
 
 -- Encore
 import Parser.Parser
@@ -38,7 +39,6 @@ import LSP.Data.TextDocument
 import LSP.Data.Error
 import LSP.Data.DataMap
 import LSP.Data.Program
-import LSP.Data.TextDocument
 
 -- ###################################################################### --
 -- Section: Support
@@ -67,7 +67,7 @@ produceAndUpdateState path dataMap = do
       Just (program, textDocument) -> do
         let source = tdContents textDocument
         -- Parse program to produce AST
-        (_ast, error) <- case parseEncoreProgram path source of
+        (_ast, error) <- case parseEncoreProgram path (Debug.trace ("source: " ++ source) source) of
           Right ast   -> return (ast, Nothing)
           Left error  -> return ((makeBlankAST path), Just error)
 
@@ -75,16 +75,26 @@ produceAndUpdateState path dataMap = do
           Just e -> do
             --print "Failed to parse program"
             let lspError = fromParsecError e
-            let newProgram = Program {
-                  ast = _ast,
-                  errors = [lspError],
-                  warnings = []
-            }
+            newProgram <- case Map.lookup path dataMap of
+              Just oldProgram -> do
+                return Program {
+                      ast = (Debug.trace "found old program" (((ast (fst oldProgram))))),
+                      errors = [lspError],
+                      warnings = []
+                      }
+
+              Nothing -> do
+                return Program {
+                      ast = (Debug.trace "found nothing" _ast),
+                      errors = [lspError],
+                      warnings = []
+                      }
+
             let newDataMap = Map.insert path (newProgram, textDocument) dataMap
             return (newDataMap)
           Nothing -> do
             -- Build program table from AST
-            programTable <- buildProgramTable preludePaths preludePaths _ast
+            programTable <- buildProgramTable preludePaths preludePaths (Debug.trace "success" _ast)
             let desugaredTable = fmap desugarProgram programTable
 
             -- Convert the desugared table into a LSPState
@@ -92,10 +102,15 @@ produceAndUpdateState path dataMap = do
 
             -- Precheck and typecheck the table
             precheckedTable <- producerPrecheck newDataMap
-            typecheckedTable <- producerTypecheck precheckedTable
-            capturecheckedTable <- producerCapturecheck typecheckedTable
+            newDataMap <- case hasErrorInDataMap precheckedTable of
+              True  -> return precheckedTable
+              False -> do
+                typecheckedTable <- producerTypecheck precheckedTable
+                case hasErrorInDataMap typecheckedTable of
+                  True  -> return typecheckedTable
+                  False -> producerCapturecheck typecheckedTable
 
-            let cleanedMap = cleanDataMap capturecheckedTable
+            let cleanedMap = cleanDataMap newDataMap
             return (magicMerger dataMap cleanedMap)
 
 cleanDataMap :: DataMap -> DataMap
@@ -112,7 +127,15 @@ magicMerger old new =
   Map.unionWith magicAux old new
   where
     magicAux :: LSPData -> LSPData -> LSPData
-    magicAux _old _new = (fst _new, snd _old)
+    magicAux _old _new =
+      case (length (errors (fst _new))) > 0 of
+        False -> (fst _new, snd _old)
+        True  -> (Program {
+                     ast = ast (fst _old),
+                     errors = errors (fst _new),
+                     warnings = warnings (fst _new)
+                     },
+                   snd _old)
 
 convertFromProgramTable :: FilePath -> ProgramTable -> DataMap
 convertFromProgramTable path table =
@@ -206,5 +229,4 @@ producerCapturecheck programTable = do
     where
         _producerCapturecheck lookupTable program = do
             (capturecheckedProgram) <- (producerCapturecheckProgram lookupTable program)
-            return (capturecheckedProgram)    
-
+            return (capturecheckedProgram)

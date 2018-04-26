@@ -1,4 +1,9 @@
-module LSP.Data.DataMap where
+module LSP.Data.DataMap(
+  LSPData,
+  DataMap,
+  hasErrorInDataMap
+  )
+where
 
 -- ###################################################################### --
 -- Section: Imports
@@ -18,3 +23,10 @@ import LSP.Data.TextDocument
 type LSPData = (Program, TextDocument)
 
 type DataMap = Map String LSPData
+
+-- ###################################################################### --
+-- Section: Functions
+-- ###################################################################### --
+
+hasErrorInDataMap :: DataMap -> Bool
+hasErrorInDataMap dataMap = Map.foldl (\acc (prog, _) -> acc || (length (errors prog)) > 0) False dataMap
