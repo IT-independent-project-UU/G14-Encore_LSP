@@ -16,7 +16,7 @@ module LSP.Data.Program (
 
 -- Standard
 import System.Exit
-import Debug.Trace
+import Debug.Trace as Debug
 
 -- Encore
 import qualified AST.AST as AST
@@ -257,7 +257,7 @@ getProgramInfoExpr pos ignorePos expr = do
         ASTMeta.RangePos start end  -> do
             case expr of
                 AST.Skip meta 
-                    -> Just $ makeProgramInfo "Skip" (LSP.fromSourcePosRange start end)
+                    -> Nothing --Just $ makeProgramInfo "Skip" (LSP.fromSourcePosRange start end)
                 AST.Break meta 
                     -> Just $ makeProgramInfo "Break" (LSP.fromSourcePosRange start end)
                 AST.Continue meta 
@@ -314,7 +314,7 @@ getProgramInfoExpr pos ignorePos expr = do
                     ->  do
                     -- Check let body
                     let bodyInfo = getProgramInfoExpr pos False body
-                    case bodyInfo of
+                    case (Debug.trace ("LET - BODY INFO: " ++ show bodyInfo) bodyInfo) of
                         Just info   -> Just info
                         Nothing     -> Nothing
                 AST.MiniLet meta mutability decls 
@@ -323,7 +323,7 @@ getProgramInfoExpr pos ignorePos expr = do
                     ->  do
                     -- Get body info
                     let innerInfo = getProgramInfoBodySeq pos eseq
-                    case innerInfo of
+                    case (Debug.trace ("SEQ - INNER INFO: " ++ show innerInfo ++ ", expr count: " ++ show (length eseq)) innerInfo) of
                         Just info   -> Just info
                         Nothing     -> Nothing
                 AST.IfThenElse meta cond thn els 
@@ -402,7 +402,14 @@ getProgramInfoExpr pos ignorePos expr = do
                 AST.New meta ty 
                     -> Just $ makeProgramInfo "New" (LSP.fromSourcePosRange start end)
                 AST.Print meta file args 
-                    -> Just $ makeProgramInfo "Print" (LSP.fromSourcePosRange start end)
+                    -> do
+                        let ty = (AST.getType expr)
+                        case (LSP.inRange pos (LSP.fromSourcePosRange start end)) || ignorePos of
+                            False   -> Nothing
+                            True    -> do
+                                let desc = "Print" --(getTypeInfo ty)
+                                let range = (LSP.fromSourcePosRange start end)
+                                Just $ makeProgramInfo desc range
                 AST.Exit meta args 
                     -> Just $ makeProgramInfo "Exit" (LSP.fromSourcePosRange start end)
                 AST.Abort meta args 
@@ -435,7 +442,7 @@ getProgramInfoBodySeq pos (x:xs) =
         ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             let exprInfo = getProgramInfoExpr pos False x
-            case exprInfo of
+            case (Debug.trace ("BODY - EXPR INFO: " ++ show exprInfo ++ show (LSP.fromSourcePosRange start end)) exprInfo) of
                 Just info   -> Just info
                 Nothing     -> getProgramInfoBodySeq pos xs
 
@@ -498,3 +505,10 @@ dumpProgramErrors program = do
             mapM_ (\x -> putStrLn $ show x) (warnings program)
             putStrLn ""
         False -> return ()
+
+-- ###################################################################### --
+-- Section: Debug functions
+-- ###################################################################### --
+
+instance Show ProgramInfo where
+    show (ProgramInfo pDesc pRange) = pDesc ++ (show pRange)
