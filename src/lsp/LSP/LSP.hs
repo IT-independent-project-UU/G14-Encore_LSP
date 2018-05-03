@@ -63,6 +63,17 @@ modifyM f = do s <- get
                s <- lift $ f s
                put s
 
+{- Uses the regular handleRequest but prints the request and response messages as well. -}
+debugHandleRequest :: Either String JSONRPC.ClientMessage ->
+                      StateT LSPState IO [ServerMessage]
+debugHandleRequest request =
+    do lift $ putStrLn $ "got request: " ++ show request
+       state <- get
+       (responses, newState) <- lift $ runStateT (handleRequest request) state
+       put newState
+       lift $ putStrLn $ "sending responses: " ++ show responses
+       return responses
+
 handleRequest :: Either String JSONRPC.ClientMessage ->
                  StateT LSPState IO [ServerMessage]
 handleRequest (Left e)
@@ -98,8 +109,21 @@ handleRequest (Right (ClientNotification "textDocument/didOpen" params))
           Just (Success document) ->
               do lift $ putStrLn $ "open " ++ (show document)
                  modify $ State.addTextDocument document
-                 modifyM $ State.compileDocument (tdUri document)
-                 return []
+                 modifyM $ State.compileDocument (uri document)
+
+                 program <- fmap (getProgram $ uri document) get
+                 case program of
+                     Just p ->
+                         return [
+                                 ServerNotification {
+                                         snMethod = "textDocument/publishDiagnostics",
+                                         snParams = Just $ toJSON $ PublishDiagnosticsParams {
+                                                 pdpUri = uri document,
+                                                 pdpDiagnostics = map errorToDiagnostic $ errors p
+                                             }
+                                     }
+                             ]
+                     Nothing -> return []
           Just (Aeson.Error err) -> return []
           Nothing -> return []
 
@@ -159,6 +183,12 @@ handleRequest (Right (Request msgID "textDocument/hover" params))
                             ]
           Just (Aeson.Error err) -> return []
           Nothing -> return []
+
+{- ignored notifications -}
+handleRequest (Right (ClientNotification "initialized" _)) = return []
+handleRequest (Right (ClientNotification "$/cancelRequest" _)) = return []
+handleRequest (Right (ClientNotification "textDocument/didSave" _)) = return []
+handleRequest (Right (ClientNotification "workspace/didChangeConfiguration" _)) = return []
 
 handleRequest (Right (ClientNotification method params))
     = return [
