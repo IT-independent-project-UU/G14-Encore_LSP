@@ -1,6 +1,9 @@
 active class Main
     def main() : unit
         println("Hello Encore 14")
+
+        var x, z = 1
+        var y = x + 2
     end
 end
 
