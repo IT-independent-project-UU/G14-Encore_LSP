@@ -16,7 +16,8 @@ module LSP.Data.Program (
 
 -- Standard
 import System.Exit
-import Debug.Trace
+import Debug.Trace as Debug
+import Data.List as List
 
 -- Encore
 import qualified AST.AST as AST
@@ -32,12 +33,12 @@ import qualified LSP.Data.Position as LSP
 -- Section: Data
 -- ###################################################################### --
 
-{- Data that holds information about a single program (compilation unit). This 
-    can later be used to lookup information. 
+{- Data that holds information about a single program (compilation unit). This
+    can later be used to lookup information.
 
-    The error and warning-list will contain all the errors and warnings, 
+    The error and warning-list will contain all the errors and warnings,
     respectively, that was generated during the compilation that generated the
-    AST. If the program compiled correctly the list of errors will be empty. 
+    AST. If the program compiled correctly the list of errors will be empty.
     Even during successfull compilation the warnings list may contain items.
 -}
 data Program = Program {
@@ -47,7 +48,7 @@ data Program = Program {
 } deriving (Show)
 
 {- Data that holds information about the result of a lookup in a program. This
-    is a String containing the description of the error as well as the 
+    is a String containing the description of the error as well as the
     range-position in the source file that the info describes.
 
     The range position is used by LSP to know in what range it the client does
@@ -86,7 +87,7 @@ makeBlankAST path = AST.Program {
     AST.classes = []
 }
 
-{- Make a program info data from the description of the info as well as the 
+{- Make a program info data from the description of the info as well as the
     position range in the source that will yield the same info
 
     Param: Description of the information.
@@ -111,10 +112,10 @@ getProgramInfoDescription info = (pDesc info)
 getProgramInfoRange :: ProgramInfo -> LSP.Range
 getProgramInfoRange info = (pRange info)
 
-{- Utility function that can be used when a SingletonPos is encountered in the 
+{- Utility function that can be used when a SingletonPos is encountered in the
     AST. It will print a message that warns about the SingletonPos. This is used
     because there should not exists any SingletonPos in the AST.
-    
+
     Return: Always returns Nothing but also prints error to output.
 -}
 handleSingletonPos :: (Maybe ProgramInfo)
@@ -122,7 +123,7 @@ handleSingletonPos = (trace "#Error: cannot handle singleton pos" Nothing)
 
 {- Retrieve information from the cursor position in the specified program. This
     will traverse the AST until it finds the most specific information about the
-    position that is specified. The function may also fail to find any 
+    position that is specified. The function may also fail to find any
     information if an error occurs or if the cursor position is on a whitespace.
 
     Param: Cursor position to look at.
@@ -231,7 +232,7 @@ getProgramInfoMethodDecl pos (x:xs) = do
                                             case localFunInfo of
                                                 Just info   -> Just info
                                                 Nothing -> Nothing
-                    
+
 {-  -}
 getProgramInfoParamDecl :: LSP.Position -> [AST.ParamDecl] -> (Maybe ProgramInfo)
 getProgramInfoParamDecl _ [] = Nothing
@@ -242,11 +243,28 @@ getProgramInfoParamDecl pos (x:xs) =
         ASTMeta.RangePos start end  -> do
             -- Check if pos is on parameter
             case LSP.inRange pos (LSP.fromSourcePosRange start end) of
-                False   -> getProgramInfoParamDecl pos xs
-                True    -> do
+                False -> getProgramInfoParamDecl pos xs
+                True  -> do
                     let desc =  "Hovering over parameter " ++ show (AST.pname x)
                     let range = (LSP.fromSourcePosRange start end)
                     Just $ makeProgramInfo desc range
+
+{- -}
+getProgramInfoDecls :: LSP.Position -> [([AST.VarDecl], AST.Expr)] -> (Maybe String)
+getProgramInfoDecls _ [] = Nothing
+getProgramInfoDecls pos (_decl:[]) = Just $ getProgramInfoDecl pos _decl
+getProgramInfoDecls pos (_decl:_decls) = do
+  let desc = getProgramInfoDecl pos _decl
+  let recDesc = (getProgramInfoDecls pos _decls)
+  case recDesc of
+    Nothing  -> Just desc
+    Just str -> Just (desc ++ ", " ++ str)
+
+{- -}
+getProgramInfoDecl :: LSP.Position -> ([AST.VarDecl], AST.Expr) -> String
+getProgramInfoDecl pos _decl@(varDecls, expr) = do
+  (List.intercalate ", " (fmap (\x -> show (AST.varName x)) varDecls)) ++ " :: " ++ (show (AST.getType expr))
+
 
 {- -}
 getProgramInfoExpr :: LSP.Position -> Bool -> AST.Expr -> (Maybe ProgramInfo)
@@ -256,15 +274,15 @@ getProgramInfoExpr pos ignorePos expr = do
         ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             case expr of
-                AST.Skip meta 
-                    -> Just $ makeProgramInfo "Skip" (LSP.fromSourcePosRange start end)
-                AST.Break meta 
+                AST.Skip meta
+                    -> Nothing --Just $ makeProgramInfo "Skip" (LSP.fromSourcePosRange start end)
+                AST.Break meta
                     -> Just $ makeProgramInfo "Break" (LSP.fromSourcePosRange start end)
-                AST.Continue meta 
+                AST.Continue meta
                     -> Just $ makeProgramInfo "Continue" (LSP.fromSourcePosRange start end)
-                AST.TypedExpr meta body ty 
+                AST.TypedExpr meta body ty
                     -> Just $ makeProgramInfo "TypedExpr" (LSP.fromSourcePosRange start end)
-                AST.MethodCall meta tyArgs target name args 
+                AST.MethodCall meta tyArgs target name args
                     ->  -- Check if pos is in message send
                         case LSP.inRange pos (LSP.fromSourcePosRange start end) of
                             False   -> Nothing
@@ -272,7 +290,7 @@ getProgramInfoExpr pos ignorePos expr = do
                                 let desc =  (buildSignature (show name) False args (AST.getType expr))
                                 let range = (LSP.fromSourcePosRange start end)
                                 Just $ makeProgramInfo desc range
-                AST.MessageSend meta tyArgs target name args 
+                AST.MessageSend meta tyArgs target name args
                     ->  -- Check if pos is in message send
                         case LSP.inRange pos (LSP.fromSourcePosRange start end) of
                             False   -> Nothing
@@ -280,11 +298,11 @@ getProgramInfoExpr pos ignorePos expr = do
                                 let desc = (buildSignature (show name) True args (AST.getType expr))
                                 let range = (LSP.fromSourcePosRange start end)
                                 Just $ makeProgramInfo desc range
-                AST.Optional meta optTag 
+                AST.Optional meta optTag
                     -> Just $ makeProgramInfo "Optional" (LSP.fromSourcePosRange start end)
-                AST.ExtractorPattern meta ty name arg 
+                AST.ExtractorPattern meta ty name arg
                     -> Just $ makeProgramInfo "Extractorp attern" (LSP.fromSourcePosRange start end)
-                AST.FunctionCall meta tyArgs name args 
+                AST.FunctionCall meta tyArgs name args
                     ->  -- Check if pos is in message send
                         case LSP.inRange pos (LSP.fromSourcePosRange start end) of
                             False   -> Nothing
@@ -292,87 +310,91 @@ getProgramInfoExpr pos ignorePos expr = do
                                 let desc = (buildSignature (show name) False args (AST.getType expr))
                                 let range = (LSP.fromSourcePosRange start end)
                                 Just $ makeProgramInfo desc range
-                AST.FunctionAsValue meta tyArgs name 
+                AST.FunctionAsValue meta tyArgs name
                     -> Just $ makeProgramInfo "Function as value" (LSP.fromSourcePosRange start end)
-                AST.Closure meta params maybeType body 
+                AST.Closure meta params maybeType body
                     -> Just $ makeProgramInfo "Closure" (LSP.fromSourcePosRange start end)
-                AST.PartySeq meta par seqFun 
+                AST.PartySeq meta par seqFun
                     -> Just $ makeProgramInfo "PartySeq" (LSP.fromSourcePosRange start end)
-                AST.PartyPar meta parl parr 
+                AST.PartyPar meta parl parr
                     -> Just $ makeProgramInfo "PartyPar" (LSP.fromSourcePosRange start end)
-                AST.PartyReduce meta seqFun init par runassoc 
+                AST.PartyReduce meta seqFun init par runassoc
                     -> Just $ makeProgramInfo "PartyReduce" (LSP.fromSourcePosRange start end)
-                AST.Async meta body 
+                AST.Async meta body
                     -> Just $ makeProgramInfo "Async" (LSP.fromSourcePosRange start end)
-                AST.Return meta value 
+                AST.Return meta value
                     -> Just $ makeProgramInfo "Return" (LSP.fromSourcePosRange start end)
-                AST.MaybeValue meta container 
+                AST.MaybeValue meta container
                     -> Just $ makeProgramInfo "Maybe value" (LSP.fromSourcePosRange start end)
-                AST.Tuple meta args 
+                AST.Tuple meta args
                     -> Just $ makeProgramInfo "Tuple" (LSP.fromSourcePosRange start end)
-                AST.Let meta mutability decl body 
-                    ->  do
-                    -- Check let body
-                    let bodyInfo = getProgramInfoExpr pos False body
-                    case bodyInfo of
-                        Just info   -> Just info
-                        Nothing     -> Nothing
-                AST.MiniLet meta mutability decls 
+                AST.Let meta mutability _decls _body
+                        ->  do
+                  -- Check if pos is in message send
+                  let range = (LSP.fromSourcePosRange start end)
+                  case LSP.inRange pos range of
+                    False   -> getProgramInfoExpr pos False _body
+                    True    -> do
+                      let declInfo = getProgramInfoDecls pos _decls
+                      case declInfo of
+                        Nothing   -> getProgramInfoExpr pos False _body
+                        Just info -> Just $ makeProgramInfo info range
+                AST.MiniLet meta mutability decl
                     ->  Just $ makeProgramInfo "MiniLet" (LSP.fromSourcePosRange start end)
-                AST.Seq meta eseq 
+                AST.Seq meta eseq
                     ->  do
                     -- Get body info
                     let innerInfo = getProgramInfoBodySeq pos eseq
-                    case innerInfo of
+                    case (Debug.trace ("SEQ - INNER INFO: " ++ show innerInfo ++ ", expr count: " ++ show (length eseq)) innerInfo) of
                         Just info   -> Just info
                         Nothing     -> Nothing
-                AST.IfThenElse meta cond thn els 
+                AST.IfThenElse meta cond thn els
                     -> Just $ makeProgramInfo "IfThenElse" (LSP.fromSourcePosRange start end)
-                AST.IfThen meta cond thn 
+                AST.IfThen meta cond thn
                     -> Just $ makeProgramInfo "IfThen" (LSP.fromSourcePosRange start end)
-                AST.Unless meta cond thn 
+                AST.Unless meta cond thn
                     -> Just $ makeProgramInfo "Unless" (LSP.fromSourcePosRange start end)
-                AST.While meta cond body 
+                AST.While meta cond body
                     -> Just $ makeProgramInfo "While" (LSP.fromSourcePosRange start end)
-                AST.DoWhile meta cond body 
+                AST.DoWhile meta cond body
                     -> Just $ makeProgramInfo "DoWhile" (LSP.fromSourcePosRange start end)
-                AST.Repeat meta name times body 
+                AST.Repeat meta name times body
                     -> Just $ makeProgramInfo "Repeat" (LSP.fromSourcePosRange start end)
-                AST.For meta name step src body 
+                AST.For meta name step src body
                     -> Just $ makeProgramInfo "For" (LSP.fromSourcePosRange start end)
-                AST.Match meta arg clauses 
+                AST.Match meta arg clauses
                     -> Just $ makeProgramInfo "Match" (LSP.fromSourcePosRange start end)
-                AST.Borrow meta target name body 
+                AST.Borrow meta target name body
                     -> Just $ makeProgramInfo "Borrow" (LSP.fromSourcePosRange start end)
-                AST.Get meta value 
+                AST.Get meta value
                     -> Just $ makeProgramInfo "Get" (LSP.fromSourcePosRange start end)
-                AST.Forward meta forwardExpr 
+                AST.Forward meta forwardExpr
                     -> Just $ makeProgramInfo "Forward" (LSP.fromSourcePosRange start end)
-                AST.Yield meta value 
+                AST.Yield meta value
                     -> Just $ makeProgramInfo "Yield" (LSP.fromSourcePosRange start end)
-                AST.Eos meta 
+                AST.Eos meta
                     -> Just $ makeProgramInfo "EOS" (LSP.fromSourcePosRange start end)
-                AST.IsEos meta target 
+                AST.IsEos meta target
                     -> Just $ makeProgramInfo "IsEOS" (LSP.fromSourcePosRange start end)
-                AST.StreamNext meta target 
+                AST.StreamNext meta target
                     -> Just $ makeProgramInfo "StreamNext" (LSP.fromSourcePosRange start end)
-                AST.Await meta value 
+                AST.Await meta value
                     -> Just $ makeProgramInfo "Await" (LSP.fromSourcePosRange start end)
-                AST.Suspend meta 
+                AST.Suspend meta
                     -> Just $ makeProgramInfo "Suspend" (LSP.fromSourcePosRange start end)
-                AST.FutureChain meta future chain 
+                AST.FutureChain meta future chain
                     -> Just $ makeProgramInfo "FutureChain" (LSP.fromSourcePosRange start end)
-                AST.FieldAccess meta target name 
+                AST.FieldAccess meta target name
                     -> Just $ makeProgramInfo "FieldAccess" (LSP.fromSourcePosRange start end)
-                AST.ArrayAccess meta target name 
+                AST.ArrayAccess meta target name
                     -> Just $ makeProgramInfo "ArrayAccess" (LSP.fromSourcePosRange start end)
-                AST.ArraySize meta target 
+                AST.ArraySize meta target
                     -> Just $ makeProgramInfo "ArraySize" (LSP.fromSourcePosRange start end)
                 AST.ArrayNew meta ty size
                     -> Just $ makeProgramInfo "ArrayNew" (LSP.fromSourcePosRange start end)
-                AST.ArrayLiteral meta args 
+                AST.ArrayLiteral meta args
                     -> Just $ makeProgramInfo "ArrayLiteral" (LSP.fromSourcePosRange start end)
-                AST.Assign emeta rhs lhs 
+                AST.Assign emeta rhs lhs
                     -> Just $ makeProgramInfo "Assign" (LSP.fromSourcePosRange start end)
                 AST.VarAccess meta qname
                     ->  do
@@ -387,43 +409,50 @@ getProgramInfoExpr pos ignorePos expr = do
                             let desc = (getTypeInfo ty)
                             let range = (LSP.fromSourcePosRange start end)
                             Just $ makeProgramInfo desc range
-                AST.TupleAccess meta target compartment 
+                AST.TupleAccess meta target compartment
                     -> Just $ makeProgramInfo "TupleAccess" (LSP.fromSourcePosRange start end)
-                AST.Consume meta target 
+                AST.Consume meta target
                     -> Just $ makeProgramInfo "Consume" (LSP.fromSourcePosRange start end)
                 AST.Null meta
                     -> Just $ makeProgramInfo "Null" (LSP.fromSourcePosRange start end)
-                AST.BTrue meta 
+                AST.BTrue meta
                     -> Just $ makeProgramInfo "True" (LSP.fromSourcePosRange start end)
-                AST.BFalse meta 
+                AST.BFalse meta
                     -> Just $ makeProgramInfo "False" (LSP.fromSourcePosRange start end)
-                AST.NewWithInit meta ty args 
+                AST.NewWithInit meta ty args
                     -> Just $ makeProgramInfo "NewWithInit" (LSP.fromSourcePosRange start end)
-                AST.New meta ty 
+                AST.New meta ty
                     -> Just $ makeProgramInfo "New" (LSP.fromSourcePosRange start end)
-                AST.Print meta file args 
-                    -> Just $ makeProgramInfo "Print" (LSP.fromSourcePosRange start end)
-                AST.Exit meta args 
+                AST.Print meta file args
+                    -> do
+                        let ty = (AST.getType expr)
+                        case (LSP.inRange pos (LSP.fromSourcePosRange start end)) || ignorePos of
+                            False   -> Nothing
+                            True    -> do
+                                let desc = "Print" --(getTypeInfo ty)
+                                let range = (LSP.fromSourcePosRange start end)
+                                Just $ makeProgramInfo desc range
+                AST.Exit meta args
                     -> Just $ makeProgramInfo "Exit" (LSP.fromSourcePosRange start end)
-                AST.Abort meta args 
+                AST.Abort meta args
                     -> Just $ makeProgramInfo "Abort" (LSP.fromSourcePosRange start end)
-                AST.StringLiteral meta literal 
+                AST.StringLiteral meta literal
                     -> Just $ makeProgramInfo "StringLiteral" (LSP.fromSourcePosRange start end)
                 AST.CharLiteral meta literal
                     -> Just $ makeProgramInfo "CharLiteral" (LSP.fromSourcePosRange start end)
-                AST.RangeLiteral meta rstart rstop step 
+                AST.RangeLiteral meta rstart rstop step
                     -> Just $ makeProgramInfo "RangeLiteral" (LSP.fromSourcePosRange start end)
-                AST.IntLiteral meta literal 
+                AST.IntLiteral meta literal
                     -> Just $ makeProgramInfo "IntLiteral" (LSP.fromSourcePosRange start end)
-                AST.UIntLiteral meta literal 
+                AST.UIntLiteral meta literal
                     -> Just $ makeProgramInfo "UIntLiteral" (LSP.fromSourcePosRange start end)
-                AST.RealLiteral meta literal 
+                AST.RealLiteral meta literal
                     -> Just $ makeProgramInfo "RealLiteral" (LSP.fromSourcePosRange start end)
-                AST.Embed meta ty embedded 
+                AST.Embed meta ty embedded
                     -> Just $ makeProgramInfo "Embed" (LSP.fromSourcePosRange start end)
-                AST.Unary meta op operand 
+                AST.Unary meta op operand
                     -> Just $ makeProgramInfo "Unary op" (LSP.fromSourcePosRange start end)
-                AST.Binop meta op loper roper 
+                AST.Binop meta op loper roper
                     -> Just $ makeProgramInfo "Binary op" (LSP.fromSourcePosRange start end)
 
 {-  -}
@@ -435,7 +464,7 @@ getProgramInfoBodySeq pos (x:xs) =
         ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             let exprInfo = getProgramInfoExpr pos False x
-            case exprInfo of
+            case (Debug.trace ("BODY - EXPR INFO: " ++ show exprInfo ++ show (LSP.fromSourcePosRange start end)) exprInfo) of
                 Just info   -> Just info
                 Nothing     -> getProgramInfoBodySeq pos xs
 
@@ -446,11 +475,11 @@ getProgramInfoBodySeq pos (x:xs) =
 {-  -}
 getTypeInfo :: Types.Type -> String
 getTypeInfo ty =
-    -- Pattern-match the inner type 
+    -- Pattern-match the inner type
     case Types.getInnerType ty of
-        Types.Unresolved refInfo 
+        Types.Unresolved refInfo
             -> "Unresolved type"
-        Types.ClassType refInfo 
+        Types.ClassType refInfo
             ->  case (Types.getRefInfoMode refInfo) of
                     Nothing -> "class" ++ (Types.getId ty)
                     Just m  -> (show m) ++ " class " ++ (Types.getId ty)
@@ -464,7 +493,7 @@ buildSignatureParamType expr = show (AST.getType expr)
 buildSignatureParamList :: [AST.Expr] -> String
 buildSignatureParamList [] = ""
 buildSignatureParamList (x:[]) = (buildSignatureParamType x)
-buildSignatureParamList (x:xs) = 
+buildSignatureParamList (x:xs) =
     (buildSignatureParamType x) ++ ", " ++ (buildSignatureParamList xs)
 
 {-  -}
@@ -481,9 +510,9 @@ buildSignatureReturnType isMsg ret =
 
 {-  -}
 buildSignature :: String -> Bool -> [AST.Expr] -> Types.Type -> String
-buildSignature name isMsg argTypes ret = 
+buildSignature name isMsg argTypes ret =
     name ++ "(" ++ (buildSignatureParamList argTypes) ++ "): " ++ (buildSignatureReturnType isMsg ret)
- 
+
 -- ###################################################################### --
 -- Section: Debug functions
 -- ###################################################################### --
@@ -498,3 +527,10 @@ dumpProgramErrors program = do
             mapM_ (\x -> putStrLn $ show x) (warnings program)
             putStrLn ""
         False -> return ()
+
+-- ###################################################################### --
+-- Section: Debug functions
+-- ###################################################################### --
+
+instance Show ProgramInfo where
+    show (ProgramInfo pDesc pRange) = pDesc ++ (show pRange)
