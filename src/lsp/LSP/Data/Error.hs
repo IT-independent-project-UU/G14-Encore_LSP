@@ -56,11 +56,13 @@ extractTCErrorPosition :: TCError -> Position
 extractTCErrorPosition error@(TCError errorType backtrace) =
     case fst (head backtrace) of
         (ASTMeta.SingletonPos startPos) ->
-            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
-            (fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)))
+            ((getPosLine startPos - 1, getPosCol startPos - 1),
+            (getPosLine startPos - 1, getPosCol startPos - 1))
         (ASTMeta.RangePos startPos endPos) ->
-            ((fromIntegral(unPos $ sourceLine $ startPos), fromIntegral(unPos $ sourceColumn $ startPos)),
-            (fromIntegral(unPos $ sourceLine $ endPos), fromIntegral(unPos $ sourceColumn $ endPos)))
+            ((getPosLine startPos - 1, getPosCol startPos - 1),
+            (getPosLine endPos - 1, getPosCol endPos - 1))
+    where getPosLine = fromIntegral . unPos . sourceLine
+          getPosCol  = fromIntegral . unPos . sourceColumn
 
 extractTCWarningPosition :: TCWarning -> Position
 extractTCWarningPosition warning = ((0,0), (0,0))
