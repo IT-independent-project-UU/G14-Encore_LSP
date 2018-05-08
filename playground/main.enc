@@ -1,9 +1,22 @@
 active class Main
     def main() : unit
         println("Hello Encore 14")
+
+        var x, z = 1
+        var y = x + 2
+        let
+            a = add(42, x)
+            b = "foobar"
+        in
+            println("ayy")
+        end
     end
 end
 
 fun wow (x: int, y: int) : unit
-  println("super")
+    println("super")
+end
+
+fun add (x: int, y: int) : int
+    x + y
 end
