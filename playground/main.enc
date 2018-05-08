@@ -8,5 +8,9 @@ active class Main
 end
 
 fun wow (x: int, y: int) : unit
-  println("super")
+    println("super")
+end
+
+fun add (x: int, y: int) : int
+    x + y
 end

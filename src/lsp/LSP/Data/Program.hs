@@ -233,7 +233,6 @@ getProgramInfoMethodDecl pos (x:xs) = do
                                                 Just info   -> Just info
                                                 Nothing -> Nothing
 
-{-  -}
 getProgramInfoParamDecl :: LSP.Position -> [AST.ParamDecl] -> (Maybe ProgramInfo)
 getProgramInfoParamDecl _ [] = Nothing
 getProgramInfoParamDecl pos (x:xs) =
@@ -249,24 +248,45 @@ getProgramInfoParamDecl pos (x:xs) =
                     let range = (LSP.fromSourcePosRange start end)
                     Just $ makeProgramInfo desc range
 
-{- -}
-getProgramInfoDecls :: LSP.Position -> [([AST.VarDecl], AST.Expr)] -> (Maybe String)
-getProgramInfoDecls _ [] = Nothing
-getProgramInfoDecls pos (_decl:[]) = Just $ getProgramInfoDecl pos _decl
-getProgramInfoDecls pos (_decl:_decls) = do
-  let desc = getProgramInfoDecl pos _decl
-  let recDesc = (getProgramInfoDecls pos _decls)
-  case recDesc of
-    Nothing  -> Just desc
-    Just str -> Just (desc ++ ", " ++ str)
+{-
+@param range Contains range information about the entire declaration
+-}
+getProgramInfoDecls :: LSP.Position -> LSP.Range -> [([AST.VarDecl], AST.Expr)] -> (Maybe ProgramInfo)
+getProgramInfoDecls _ _ [] = Nothing
+getProgramInfoDecls pos range (_decl:[]) = do
+  let expr = snd _decl
+  case ASTMeta.getPos (AST.emeta expr) of
+    ASTMeta.SingletonPos _     -> handleSingletonPos
+    ASTMeta.RangePos start end -> do
+      let exprInfo = getProgramInfoExpr pos False expr
+      case exprInfo of
+        Just info -> do
+          let exprRange = getProgramInfoRange info
+          case LSP.inRange pos exprRange of
+            True -> exprInfo
+            False -> do
+              let complimentRange = LSP.rangeCompliment range (getProgramInfoRange info)
+              Just $ makeProgramInfo (getProgramInfoDecl pos  _decl) complimentRange
+        Nothing -> do
+          let complimentRange = LSP.rangeCompliment range (LSP.fromSourcePosRange start end)
+          Just $ makeProgramInfo (getProgramInfoDecl pos  _decl) complimentRange
+getProgramInfoDecls pos _ _decls = getProgramInfoDeclsInner pos _decls
 
-{- -}
+getProgramInfoDeclsInner :: LSP.Position -> [([AST.VarDecl], AST.Expr)] -> (Maybe ProgramInfo)
+getProgramInfoDeclsInner _ [] = Nothing
+getProgramInfoDeclsInner pos (_decl:_decls) = do
+  let expr = snd _decl
+  case ASTMeta.getPos (AST.emeta expr) of
+    ASTMeta.SingletonPos _     -> handleSingletonPos
+    ASTMeta.RangePos start end -> do
+      case LSP.inRange pos (LSP.fromSourcePosRange start end) of
+        False -> getProgramInfoDeclsInner pos _decls
+        True  -> getProgramInfoExpr pos False expr
+
 getProgramInfoDecl :: LSP.Position -> ([AST.VarDecl], AST.Expr) -> String
 getProgramInfoDecl pos _decl@(varDecls, expr) = do
   (List.intercalate ", " (fmap (\x -> show (AST.varName x)) varDecls)) ++ " :: " ++ (show (AST.getType expr))
 
-
-{- -}
 getProgramInfoExpr :: LSP.Position -> Bool -> AST.Expr -> (Maybe ProgramInfo)
 getProgramInfoExpr pos ignorePos expr = do
     -- Check if singleton or range pos
@@ -335,10 +355,11 @@ getProgramInfoExpr pos ignorePos expr = do
                   case LSP.inRange pos range of
                     False   -> getProgramInfoExpr pos False _body
                     True    -> do
-                      let declInfo = getProgramInfoDecls pos _decls
+                      let declInfo = getProgramInfoDecls pos range _decls
                       case declInfo of
                         Nothing   -> getProgramInfoExpr pos False _body
-                        Just info -> Just $ makeProgramInfo info range
+                        Just programInfo -> Just programInfo
+
                 AST.MiniLet meta mutability decl
                     ->  Just $ makeProgramInfo "MiniLet" (LSP.fromSourcePosRange start end)
                 AST.Seq meta eseq
@@ -453,7 +474,26 @@ getProgramInfoExpr pos ignorePos expr = do
                 AST.Unary meta op operand
                     -> Just $ makeProgramInfo "Unary op" (LSP.fromSourcePosRange start end)
                 AST.Binop meta op loper roper
-                    -> Just $ makeProgramInfo "Binary op" (LSP.fromSourcePosRange start end)
+                    -> do
+                  case ASTMeta.getPos (AST.getMeta loper) of
+                    ASTMeta.SingletonPos _      -> handleSingletonPos
+                    ASTMeta.RangePos lstart lend  -> do
+                      -- are we in loper?
+                      let lrange = LSP.fromSourcePosRange lstart lend
+                      case LSP.inRange pos lrange of
+                        True -> getProgramInfoExpr pos False loper
+                        False ->
+                          case ASTMeta.getPos (AST.getMeta roper) of
+                            ASTMeta.SingletonPos _      -> handleSingletonPos
+                            ASTMeta.RangePos rstart rend  -> do
+                              -- are we in roper?
+                              let rrange = LSP.fromSourcePosRange rstart rend
+                              case LSP.inRange pos rrange of
+                                True -> getProgramInfoExpr pos False roper
+                                False -> do
+                                  let binopRange = LSP.fromSourcePosRange start end
+                                  let wholeRange = LSP.widestRange binopRange [lrange, rrange]
+                                  Just $ makeProgramInfo "Binary op" wholeRange
 
 {-  -}
 getProgramInfoBodySeq :: LSP.Position -> [AST.Expr] -> (Maybe ProgramInfo)
