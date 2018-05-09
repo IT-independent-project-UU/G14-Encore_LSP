@@ -255,7 +255,7 @@ compileProgram prog sourcePath options =
            customFlags = case find isCustomFlags options of
                            Just (CustomFlags str) -> str
                            Nothing                -> ""
-           flags = "-std=gnu11 -Wall -fms-extensions -Wno-format -Wno-microsoft -Wno-parentheses-equality -Wno-unused-variable -Wno-unused-value" <+> customFlags <+> "-lpthread -ldl -lm -Wno-attributes"
+           flags = "-std=gnu11 -Wall -fms-extensions -Wno-format -Wno-microsoft -Wno-parentheses-equality -Wno-unused-variable -Wno-unused-value" <+> customFlags <+> "-lpthread -ldl -lm -Wno-attributes -latomic"
            oFlag = "-o" <+> execName
            defines = getDefines options
            incs  = "-I" <+> incPath <+> "-I ."
@@ -328,7 +328,7 @@ serverParams "tcp-client" options = do
 serverParams _ _ = fail "Language server mode must be one of \"stdio\", \"tcp-server\" or \"tcp-client\"."
 
 main =
-    do 
+    do
        -- Parse arguments
        args <- getArgs
        (programs, importDirs, options) <- parseArguments args
