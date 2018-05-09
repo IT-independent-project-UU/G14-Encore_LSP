@@ -2,6 +2,8 @@ active class Main
   def main() : unit
     globalFunction("Calling global function")
 
+    var bar = new Bar(5)
+
     var truth = new Truth
     truth ! tell("c++ is a nice language")
 
@@ -11,6 +13,13 @@ active class Main
     obj2.setID("obj2")
     obj1.printID()
     obj2.printID()
+  end
+end
+
+local class Bar
+  var mVal : int
+  def init(value : int) : unit
+    this.mVal = value
   end
 end
 
