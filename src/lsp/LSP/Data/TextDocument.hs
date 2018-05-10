@@ -80,9 +80,12 @@ applyTextChange ((startLine, startChar), (endLine, endChar))
                 replacement
                 text
     = let textLines = split "\n" text
+          clamp = max 0 . min (length textLines - 1)
+          boundedStartLine = clamp startLine
+          boundedEndLine   = clamp endLine
           startSegment = join "\n" $ take startLine textLines ++
-                                     [take startChar $ textLines !! startLine]
-          endSegment = join "\n" $ (drop endChar $ textLines !! endLine) :
+                                     [take startChar $ textLines !! boundedStartLine]
+          endSegment = join "\n" $ (drop endChar $ textLines !! boundedEndLine) :
                                    drop (endLine+1) textLines
       in startSegment ++ replacement ++ endSegment
 

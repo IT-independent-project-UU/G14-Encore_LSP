@@ -106,8 +106,7 @@ handleRequest (Right (Request msgID "initialize" params))
 handleRequest (Right (ClientNotification "textDocument/didOpen" params))
     = case fmap fromJSON params of
           Just (Success document) ->
-              do lift $ putStrLn $ "open " ++ (show document)
-                 modify $ State.addTextDocument document
+              do modify $ State.addTextDocument document
                  modifyM $ State.compileDocument (uri document)
 
                  program <- fmap (getProgram $ uri document) get
@@ -154,7 +153,9 @@ handleRequest (Right (ClientNotification "textDocument/didChange" params))
                                      }
                              ]
                      Nothing -> return []
-          Just (Aeson.Error err) -> return []
+          Just (Aeson.Error err) ->
+              do lift $ putStrLn $ show err
+                 return []
           Nothing -> return []
 
 handleRequest (Right (Request msgID "textDocument/hover" params))
