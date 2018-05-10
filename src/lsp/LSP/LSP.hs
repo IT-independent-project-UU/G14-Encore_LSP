@@ -163,18 +163,18 @@ handleRequest (Right (Request msgID "textDocument/hover" params))
           Just (Success posParams) ->
               do state <- get
                  case State.getProgram (Hover.uri posParams) state >>=
-                          getProgramInfoForPos (Debug.trace ("hover pos: " ++ show (Hover.position posParams)) (Hover.position posParams)) of
+                          getProgramInfoForPos ({- Debug.trace ("hover pos: " ++ show (Hover.position posParams)) -} (Hover.position posParams)) of
                      Nothing ->
                         return [
                                 Response {
-                                    srMsgID = Debug.trace "hover nothing: " msgID,
+                                    srMsgID = {- Debug.trace "hover nothing: " -} msgID,
                                     srResult = Null
                                 }
                             ]
                      Just info ->
                          return [
                                 Response {
-                                    srMsgID = Debug.trace "hover just: " msgID,
+                                    srMsgID = {- Debug.trace "hover just: " -} msgID,
                                     srResult = toJSON $ Hover {
                                         Hover.contents = pDesc info,
                                         Hover.range = pRange info
