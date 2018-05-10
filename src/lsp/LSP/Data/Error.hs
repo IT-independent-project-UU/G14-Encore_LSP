@@ -53,6 +53,7 @@ data Error = Error{
 -- ###################################################################### --
 
 extractTCErrorPosition :: TCError -> Position
+extractTCErrorPosition error@(TCError errorType []) = ((0, 0), (0, 0))
 extractTCErrorPosition error@(TCError errorType backtrace) =
     case fst (head backtrace) of
         (ASTMeta.SingletonPos startPos) ->

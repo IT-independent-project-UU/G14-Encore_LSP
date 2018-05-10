@@ -76,7 +76,7 @@ applyTextDocumentChange textDocumentChange textDocument =
 
 applyTextChange :: Range -> String -> String -> String
 applyTextChange _ replacement "" = replacement
-applyTextChange ((startLine, startChar), (endLine, endChar))
+applyTextChange a@((startLine, startChar), (endLine, endChar))
                 replacement
                 text
     = let textLines = split "\n" text
