@@ -67,7 +67,7 @@ produceAndUpdateState path dataMap = do
       Just (program, textDocument) -> do
         let source = tdContents textDocument
         -- Parse program to produce AST
-        (_ast, error) <- case parseEncoreProgram path (Debug.trace ("source: " ++ source) source) of
+        (_ast, error) <- case parseEncoreProgram path source of
           Right ast   -> return (ast, Nothing)
           Left error  -> return ((makeBlankAST path), Just error)
 
