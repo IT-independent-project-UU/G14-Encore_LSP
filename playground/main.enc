@@ -1,12 +1,16 @@
 active class Main
     def main() : unit
-        println("Hello Encore 14")
-
-        var x, z = 1
-        var y = x + 2
+        var x = 1
+        add(1, x, 3)
+        var y = add(x, 2, 1)
+        var z = sub(3, add(y, x, 2))
     end
 end
 
-fun wow (x: int, y: int) : unit
-  println("super")
+fun add (x: int, y: int, z: int) : int
+    x + y + z
+end
+
+fun sub (x: int, y: int) : int
+    x - y
 end
