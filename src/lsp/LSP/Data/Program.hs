@@ -521,13 +521,14 @@ getProgramInfoExpr program pos ignorePos expr = do
 
                 AST.Binop meta op loper roper
                     -> do
-                  let lprogInfo = getProgramInfoExpr program pos True loper
-                  let rprogInfo = getProgramInfoExpr program pos True roper
+                  {--
+                let lprogInfo = getProgramInfoExpr program pos True loper
+                    let rprogInfo = getProgramInfoExpr program pos True roper
 
 
 
                   -- loper
-                  case getProgramInfoExpr program pos False loper of
+                    case getProgramInfoExpr program pos False loper of
                     Just lprogInfo -> Just lprogInfo
                     Nothing        -> do
                       --roper
@@ -541,7 +542,7 @@ getProgramInfoExpr program pos ignorePos expr = do
                           case LSP.inRange pos wholeRange of
                             False -> Nothing
                             True  -> Just $ makeProgramInfoDebug "Binary op" wholeRange
-
+-}
 
                   case ASTMeta.getPos (AST.getMeta loper) of
                     ASTMeta.SingletonPos _      -> handleSingletonPos
