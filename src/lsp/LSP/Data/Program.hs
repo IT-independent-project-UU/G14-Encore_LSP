@@ -134,7 +134,7 @@ handleSingletonPos = (trace "#Error: cannot handle singleton pos" Nothing)
     Param: Program to search in.
     Return: Program information for position or "Nothing"
 -}
-getProgramInfoForPos :: LSP.Position -> Program -> (Maybe ProgramInfo)
+getProgramInfoForPos :: LSP.Position -> Program -> Maybe ProgramInfo
 getProgramInfoForPos pos program = do
     -- Try to get function info
     let functionInfo = (getProgramInfoFunction program pos (AST.functions $ ast program))
@@ -151,7 +151,7 @@ getProgramInfoForPos pos program = do
 
 
 -}
-getProgramInfoFunction :: Program -> LSP.Position -> [AST.Function] -> (Maybe ProgramInfo)
+getProgramInfoFunction :: Program -> LSP.Position -> [AST.Function] -> Maybe ProgramInfo
 getProgramInfoFunction _ _ [] = Nothing
 getProgramInfoFunction program pos (x:xs) =
     -- Check if singleton or range pos
@@ -179,7 +179,7 @@ getProgramInfoFunction program pos (x:xs) =
                                         Nothing     -> Nothing
 
 {-  -}
-getProgramInfoClass :: Program -> LSP.Position -> [AST.ClassDecl] -> (Maybe ProgramInfo)
+getProgramInfoClass :: Program -> LSP.Position -> [AST.ClassDecl] -> Maybe ProgramInfo
 getProgramInfoClass _ _ [] = Nothing
 getProgramInfoClass program pos (x:xs) = do
     -- Check if pos is singleton or range pos
@@ -248,7 +248,7 @@ getProgramInfoParamDecl program pos (x:xs) =
             case LSP.inRange pos (LSP.fromSourcePosRange start end) of
                 False -> getProgramInfoParamDecl program pos xs
                 True  -> do
-                    let desc =  "Hovering over parameter " ++ show (AST.pname x)
+                    let desc =  "(parameter) " ++ (show (AST.pname x)) ++ ": " ++ (show (AST.ptype x))
                     let range = (LSP.fromSourcePosRange start end)
                     Just $ makeProgramInfo desc range
 
@@ -521,6 +521,28 @@ getProgramInfoExpr program pos ignorePos expr = do
 
                 AST.Binop meta op loper roper
                     -> do
+                  let lprogInfo = getProgramInfoExpr program pos True loper
+                  let rprogInfo = getProgramInfoExpr program pos True roper
+
+
+
+                  -- loper
+                  case getProgramInfoExpr program pos False loper of
+                    Just lprogInfo -> Just lprogInfo
+                    Nothing        -> do
+                      --roper
+                      case getProgramInfoExpr program pos False roper of
+                        Just rprogInfo -> Just rprogInfo
+                        Nothing        -> do
+                          --binop
+                          let binopRange = LSP.fromSourcePosRange start end
+                          let lrange = getProgramInfoRange lprogInfo
+                          let wholeRange = LSP.widestRange binopRange [lrange, rrange]
+                          case LSP.inRange pos wholeRange of
+                            False -> Nothing
+                            True  -> Just $ makeProgramInfoDebug "Binary op" wholeRange
+
+
                   case ASTMeta.getPos (AST.getMeta loper) of
                     ASTMeta.SingletonPos _      -> handleSingletonPos
                     ASTMeta.RangePos lstart lend  -> do
@@ -539,7 +561,10 @@ getProgramInfoExpr program pos ignorePos expr = do
                                 False -> do
                                   let binopRange = LSP.fromSourcePosRange start end
                                   let wholeRange = LSP.widestRange binopRange [lrange, rrange]
-                                  Just $ makeProgramInfoDebug "Binary op" wholeRange
+                                  -- are we in the binop at all?
+                                  case LSP.inRange pos wholeRange of
+                                    False -> Nothing
+                                    True  -> Just $ makeProgramInfoDebug "Binary op" wholeRange
 
 {-  -}
 getProgramInfoExprs :: Program -> LSP.Position -> [AST.Expr] -> (Maybe ProgramInfo)
