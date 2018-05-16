@@ -387,7 +387,7 @@ getProgramInfoExpr program pos ignorePos expr = do
                     ->  do
                     -- Get body info
                     let innerInfo = getProgramInfoExprs program pos eseq
-                    case (Debug.trace ("SEQ - INNER INFO: " ++ show innerInfo ++ ", expr count: " ++ show (length eseq)) innerInfo) of
+                    case {- Debug.trace ("SEQ - INNER INFO: " ++ show innerInfo ++ ", expr count: " ++ show (length eseq)) -} innerInfo of
                         Just info   -> Just info
                         Nothing     -> Nothing
 
@@ -575,7 +575,7 @@ getProgramInfoExprs program pos (x:xs) =
         ASTMeta.SingletonPos _      -> handleSingletonPos
         ASTMeta.RangePos start end  -> do
             let exprInfo = getProgramInfoExpr program pos False x
-            case (Debug.trace ("BODY - EXPR INFO: " ++ show exprInfo ++ show (LSP.fromSourcePosRange start end)) exprInfo) of
+            case {- Debug.trace ("BODY - EXPR INFO: " ++ show exprInfo ++ show (LSP.fromSourcePosRange start end)) -} exprInfo of
                 Just info   -> Just info
                 Nothing     -> getProgramInfoExprs program pos xs
 

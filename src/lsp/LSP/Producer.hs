@@ -67,7 +67,7 @@ produceAndUpdateState path dataMap = do
       Just (program, textDocument) -> do
         let source = tdContents textDocument
         -- Parse program to produce AST
-        (_ast, error) <- case parseEncoreProgram path (Debug.trace ("source: " ++ source) source) of
+        (_ast, error) <- case parseEncoreProgram path $ {- Debug.trace ("source: " ++ source) -} source of
           Right ast   -> return (ast, Nothing)
           Left error  -> return ((makeBlankAST path), Just error)
 
@@ -78,14 +78,14 @@ produceAndUpdateState path dataMap = do
             newProgram <- case Map.lookup path dataMap of
               Just oldProgram -> do
                 return Program {
-                      ast = (Debug.trace "found old program" (((ast (fst oldProgram))))),
+                      ast = {- Debug.trace "found old program" $ -} ast (fst oldProgram),
                       errors = [lspError],
                       warnings = []
                       }
 
               Nothing -> do
                 return Program {
-                      ast = (Debug.trace "found nothing" _ast),
+                      ast = {- Debug.trace "found nothing" -} _ast,
                       errors = [lspError],
                       warnings = []
                       }
@@ -94,7 +94,7 @@ produceAndUpdateState path dataMap = do
             return (newDataMap)
           Nothing -> do
             -- Build program table from AST
-            programTable <- buildProgramTable preludePaths preludePaths (Debug.trace "success" _ast)
+            programTable <- buildProgramTable preludePaths preludePaths $ {- Debug.trace "success" -} _ast
             let desugaredTable = fmap desugarProgram programTable
 
             -- Convert the desugared table into a LSPState
