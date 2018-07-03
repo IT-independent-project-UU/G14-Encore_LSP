@@ -85,7 +85,9 @@ makeBlankAST path = AST.Program {
     AST.typedefs = [],
     AST.functions = [],
     AST.traits = [],
-    AST.classes = []
+    AST.classes = [],
+    AST.adts = [],
+    AST.adtCons = []
 }
 
 {- Make a program info data from the description of the info as well as the
@@ -584,7 +586,7 @@ getTypeInfo ty =
     case Types.getInnerType ty of
         Types.Unresolved refInfo ->
           "Unresolved type"
-        Types.ClassType refInfo ->
+        Types.ClassType refInfo _ _ ->
           case (Types.getRefInfoMode refInfo) of
             Nothing -> "class" ++ (Types.getId ty)
             Just m  -> (show m) ++ " class " ++ (Types.getId ty)
