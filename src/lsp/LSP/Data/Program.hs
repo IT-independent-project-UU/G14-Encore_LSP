@@ -37,7 +37,7 @@ import qualified LSP.Data.Position as LSP
     can later be used to lookup information.
 
     The error and warning-list will contain all the errors and warnings,
-    respectively, that was generated during the compilation that generated the
+respectively, that was generated during the compilation that generated the
     AST. If the program compiled correctly the list of errors will be empty.
     Even during successfull compilation the warnings list may contain items.
 -}
