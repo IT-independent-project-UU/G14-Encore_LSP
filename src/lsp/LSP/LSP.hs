@@ -98,7 +98,6 @@ handleRequest (Right (Request msgID "initialize" params))
                   srResult = object [
                       ("capabilities", object [
                           ("textDocumentSync", Number 2), -- Incremental
-                          ("colorProvider", object []),
                           ("hoverProvider", Bool True)
                       ])
                   ]
